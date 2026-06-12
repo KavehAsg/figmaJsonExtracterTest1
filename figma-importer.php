@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Figma to Elementor Importer
  * Description: نسخه پایدار با استخراج ابعاد، رنگ پس‌زمینه و رفع باگ UI
- * Version: 2.7.0
+ * Version: 2.8.0
  * Author: Kaveh
  */
 
@@ -621,6 +621,245 @@ function convert_figma_node($node)
                 'elements' => [],
             ];
         }
+
+        // Alert / Banner / Snackbar
+        if ($node['widgetType'] === 'alert') {
+            $alert_settings = [
+                'alert_type' => 'info',
+                'alert_title' => '',
+                'alert_description' => $node['settings']['text'] ?? 'Alert message',
+            ];
+
+            // Show dismiss button
+            if (!empty($node['settings']['showDismiss']) && $node['settings']['showDismiss'] === 'yes') {
+                $alert_settings['show_dismiss'] = 'show';
+            } else {
+                $alert_settings['show_dismiss'] = 'hide';
+            }
+
+            // Background color from fill token
+            if (!empty($node['tokens']['fill'])) {
+                $bg_token = str_replace([' ', '/'], '-', strtolower($node['tokens']['fill']));
+                $alert_settings['background_color'] = 'var(--' . $bg_token . ')';
+            }
+
+            // Text color from textColor token
+            if (!empty($node['tokens']['textColor'])) {
+                $tc_token = str_replace([' ', '/'], '-', strtolower($node['tokens']['textColor']));
+                $alert_settings['text_color'] = 'var(--' . $tc_token . ')';
+            }
+
+            // Border radius
+            $radius = kaveh_build_dimensions_array($node, [
+                'topLeftRadius' => 'top',
+                'topRightRadius' => 'right',
+                'bottomRightRadius' => 'bottom',
+                'bottomLeftRadius' => 'left',
+            ]);
+            if ($radius) {
+                $alert_settings['border_radius'] = $radius;
+            }
+
+            return [
+                'id' => $el_id,
+                'elType' => 'widget',
+                'widgetType' => 'alert',
+                'settings' => $alert_settings,
+                'elements' => [],
+            ];
+        }
+
+        // Linear Progress
+        if ($node['widgetType'] === 'progress') {
+            $progress_settings = [
+                'title' => '',
+                'percent' => $node['rawValues']['percentage'] ?? 50,
+            ];
+
+            // Indicator color (progress bar fill)
+            if (!empty($node['tokens']['progressColor'])) {
+                $ind_token = str_replace([' ', '/'], '-', strtolower($node['tokens']['progressColor']));
+                $progress_settings['color'] = 'var(--' . $ind_token . ')';
+            }
+
+            // Track color (background of the bar)
+            if (!empty($node['tokens']['fill'])) {
+                $track_token = str_replace([' ', '/'], '-', strtolower($node['tokens']['fill']));
+                $progress_settings['editor_inner_color'] = 'var(--' . $track_token . ')';
+            }
+
+            return [
+                'id' => $el_id,
+                'elType' => 'widget',
+                'widgetType' => 'progress',
+                'settings' => $progress_settings,
+                'elements' => [],
+            ];
+        }
+
+        // Icon Box / List Item / Feature Card
+        if ($node['widgetType'] === 'icon-box') {
+            $ib_settings = [
+                'title_text' => $node['settings']['title'] ?? 'Title',
+                'description_text' => $node['settings']['description'] ?? '',
+            ];
+
+            // Icon (Smart Name Mapping: Figma/M3 icon name → Font Awesome)
+            if (!empty($node['settings']['iconName'])) {
+                $icon_name_raw = strtolower(trim($node['settings']['iconName']));
+                $icon_name_raw = preg_replace('/^(ic_|icon_|ico_)/', '', $icon_name_raw);
+                $icon_name_raw = str_replace(['_', ' '], '-', $icon_name_raw);
+
+                // M3 / Material → Font Awesome mapping table (same as button)
+                $icon_map = [
+                    'arrow-back'        => 'fas fa-arrow-left',
+                    'arrow-forward'     => 'fas fa-arrow-right',
+                    'arrow-upward'      => 'fas fa-arrow-up',
+                    'arrow-downward'    => 'fas fa-arrow-down',
+                    'arrow-left'        => 'fas fa-arrow-left',
+                    'arrow-right'       => 'fas fa-arrow-right',
+                    'chevron-left'      => 'fas fa-chevron-left',
+                    'chevron-right'     => 'fas fa-chevron-right',
+                    'expand-more'       => 'fas fa-chevron-down',
+                    'expand-less'       => 'fas fa-chevron-up',
+                    'menu'              => 'fas fa-bars',
+                    'close'             => 'fas fa-times',
+                    'cancel'            => 'fas fa-times-circle',
+                    'search'            => 'fas fa-search',
+                    'add'               => 'fas fa-plus',
+                    'remove'            => 'fas fa-minus',
+                    'delete'            => 'fas fa-trash',
+                    'edit'              => 'fas fa-pen',
+                    'create'            => 'fas fa-plus',
+                    'save'              => 'fas fa-save',
+                    'send'              => 'fas fa-paper-plane',
+                    'share'             => 'fas fa-share-alt',
+                    'download'          => 'fas fa-download',
+                    'upload'            => 'fas fa-upload',
+                    'refresh'           => 'fas fa-sync',
+                    'copy'              => 'fas fa-copy',
+                    'print'             => 'fas fa-print',
+                    'filter'            => 'fas fa-filter',
+                    'sort'              => 'fas fa-sort',
+                    'undo'              => 'fas fa-undo',
+                    'redo'              => 'fas fa-redo',
+                    'settings'          => 'fas fa-cog',
+                    'tune'              => 'fas fa-sliders-h',
+                    'more-vert'         => 'fas fa-ellipsis-v',
+                    'more-horiz'        => 'fas fa-ellipsis-h',
+                    'image'             => 'fas fa-image',
+                    'photo'             => 'fas fa-image',
+                    'camera'            => 'fas fa-camera',
+                    'video'             => 'fas fa-video',
+                    'play'              => 'fas fa-play',
+                    'pause'             => 'fas fa-pause',
+                    'stop'              => 'fas fa-stop',
+                    'mic'               => 'fas fa-microphone',
+                    'volume-up'         => 'fas fa-volume-up',
+                    'volume-off'        => 'fas fa-volume-mute',
+                    'attachment'        => 'fas fa-paperclip',
+                    'attach-file'       => 'fas fa-paperclip',
+                    'link'              => 'fas fa-link',
+                    'email'             => 'fas fa-envelope',
+                    'mail'              => 'fas fa-envelope',
+                    'chat'              => 'fas fa-comment',
+                    'message'           => 'fas fa-comment-dots',
+                    'call'              => 'fas fa-phone',
+                    'phone'             => 'fas fa-phone',
+                    'notifications'     => 'fas fa-bell',
+                    'notification'      => 'fas fa-bell',
+                    'person'            => 'fas fa-user',
+                    'account-circle'    => 'fas fa-user-circle',
+                    'group'             => 'fas fa-users',
+                    'people'            => 'fas fa-users',
+                    'check'             => 'fas fa-check',
+                    'check-circle'      => 'fas fa-check-circle',
+                    'done'              => 'fas fa-check',
+                    'error'             => 'fas fa-exclamation-circle',
+                    'warning'           => 'fas fa-exclamation-triangle',
+                    'info'              => 'fas fa-info-circle',
+                    'help'              => 'fas fa-question-circle',
+                    'shopping-cart'     => 'fas fa-shopping-cart',
+                    'cart'              => 'fas fa-shopping-cart',
+                    'store'             => 'fas fa-store',
+                    'payment'           => 'fas fa-credit-card',
+                    'credit-card'       => 'fas fa-credit-card',
+                    'home'              => 'fas fa-home',
+                    'favorite'          => 'fas fa-heart',
+                    'star'              => 'fas fa-star',
+                    'bookmark'          => 'fas fa-bookmark',
+                    'flag'              => 'fas fa-flag',
+                    'lock'              => 'fas fa-lock',
+                    'visibility'        => 'fas fa-eye',
+                    'visibility-off'    => 'fas fa-eye-slash',
+                    'calendar'          => 'fas fa-calendar-alt',
+                    'event'             => 'fas fa-calendar-alt',
+                    'schedule'          => 'fas fa-clock',
+                    'location'          => 'fas fa-map-marker-alt',
+                    'place'             => 'fas fa-map-marker-alt',
+                    'map'               => 'fas fa-map',
+                    'globe'             => 'fas fa-globe',
+                    'language'          => 'fas fa-globe',
+                    'file'              => 'fas fa-file',
+                    'folder'            => 'fas fa-folder',
+                    'cloud'             => 'fas fa-cloud',
+                    'cloud-upload'      => 'fas fa-cloud-upload-alt',
+                    'cloud-download'    => 'fas fa-cloud-download-alt',
+                    'login'             => 'fas fa-sign-in-alt',
+                    'logout'            => 'fas fa-sign-out-alt',
+                    'exit'              => 'fas fa-sign-out-alt',
+                    'thumb-up'          => 'fas fa-thumbs-up',
+                    'thumb-down'        => 'fas fa-thumbs-down',
+                ];
+
+                $fa_class = null;
+                if (isset($icon_map[$icon_name_raw])) {
+                    $fa_class = $icon_map[$icon_name_raw];
+                } else {
+                    foreach ($icon_map as $key => $value) {
+                        if (strpos($icon_name_raw, $key) !== false) {
+                            $fa_class = $value;
+                            break;
+                        }
+                    }
+                }
+                if (!$fa_class) {
+                    $fa_class = 'fas fa-star';
+                }
+
+                $fa_parts = explode(' ', $fa_class, 2);
+                $ib_settings['selected_icon'] = [
+                    'library' => ($fa_parts[0] === 'fab') ? 'fa-brands' : (($fa_parts[0] === 'far') ? 'fa-regular' : 'fa-solid'),
+                    'value' => $fa_class,
+                ];
+            }
+
+            // Icon color
+            if (!empty($node['tokens']['iconColor'])) {
+                $ic_token = str_replace([' ', '/'], '-', strtolower($node['tokens']['iconColor']));
+                $ib_settings['icon_color'] = 'var(--' . $ic_token . ')';
+            }
+
+            // Title color
+            if (!empty($node['tokens']['titleColor'])) {
+                $tc_token = str_replace([' ', '/'], '-', strtolower($node['tokens']['titleColor']));
+                $ib_settings['title_color'] = 'var(--' . $tc_token . ')';
+            }
+
+            // Description color
+            if (!empty($node['tokens']['descriptionColor'])) {
+                $dc_token = str_replace([' ', '/'], '-', strtolower($node['tokens']['descriptionColor']));
+                $ib_settings['description_color'] = 'var(--' . $dc_token . ')';
+            }
+
+            return [
+                'id' => $el_id,
+                'elType' => 'widget',
+                'widgetType' => 'icon-box',
+                'settings' => $ib_settings,
+                'elements' => [],
+            ];
+        }
     }
 
     // ب: کانتینرها (Frame/Group/Section)
@@ -786,7 +1025,7 @@ function kaveh_render_admin_page()
     }
     ?>
     <div class="wrap">
-        <h1 style="margin-bottom: 20px;">Figma Importer 2.7 🚀</h1>
+        <h1 style="margin-bottom: 20px;">Figma Importer 2.8 🚀</h1>
         <?php echo $message; ?>
         <form method="post" enctype="multipart/form-data" style="max-width: 650px; background: #fff; padding: 25px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); border: 1px solid #ccd0d4;">
             

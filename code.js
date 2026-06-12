@@ -68,6 +68,160 @@ const runPlugin = async function () {
             }
         }
 
+        // ===== GLOBAL DEEP EXTRACTION HELPERS =====
+        // These helpers are used by multiple SMART_WIDGET handlers.
+
+        // Deep Text Extraction (recursive)
+        // M3 components nest text deep: Frame > State Layer > Label Text
+        // We recursively find the FIRST Text node at any depth.
+        const findFirstText = async function (n) {
+            if (n.type === 'TEXT') return n;
+            if ('children' in n && n.children.length > 0) {
+                for (let i = 0; i < n.children.length; i++) {
+                    const found = await findFirstText(n.children[i]);
+                    if (found) return found;
+                }
+            }
+            return null;
+        };
+
+        // Find first N text nodes (recursive)
+        // Returns an array of up to `maxCount` TEXT nodes found depth-first.
+        const findTextNodes = async function (n, maxCount, results) {
+            if (!results) results = [];
+            if (results.length >= maxCount) return results;
+            if (n.type === 'TEXT') {
+                results.push(n);
+                return results;
+            }
+            if ('children' in n && n.children.length > 0) {
+                for (let i = 0; i < n.children.length; i++) {
+                    await findTextNodes(n.children[i], maxCount, results);
+                    if (results.length >= maxCount) break;
+                }
+            }
+            return results;
+        };
+
+        // Deep Background Fill Extraction
+        // Checks node and immediate children for fill tokens/styles.
+        // Returns the resolved fill token name, or null.
+        const extractDeepBackground = async function (node) {
+            // 1. Check main node for boundVariables['fills']
+            if (node.boundVariables && node.boundVariables['fills']
+                && Array.isArray(node.boundVariables['fills'])
+                && node.boundVariables['fills'].length > 0) {
+                const fillToken = await getVarName(node.boundVariables['fills'][0].id);
+                if (fillToken) return fillToken;
+            }
+            // 2. Fallback: check main node's fillStyleId
+            if (node.fillStyleId && node.fillStyleId !== "") {
+                const fillStyleName = await getVarName(node.fillStyleId);
+                if (fillStyleName) return fillStyleName;
+            }
+            // 3. M3 Deep Fill: check immediate children (e.g. "State layer" frames)
+            if ("children" in node && node.children.length > 0) {
+                for (let i = 0; i < node.children.length; i++) {
+                    const child = node.children[i];
+                    // Skip TEXT nodes — we only want container/frame children
+                    if (child.type === 'TEXT') continue;
+
+                    // Try child's boundVariables['fills']
+                    if (child.boundVariables && child.boundVariables['fills']
+                        && Array.isArray(child.boundVariables['fills'])
+                        && child.boundVariables['fills'].length > 0) {
+                        const childFillToken = await getVarName(child.boundVariables['fills'][0].id);
+                        if (childFillToken) return childFillToken;
+                    }
+                    // Try child's fillStyleId
+                    if (child.fillStyleId && child.fillStyleId !== "") {
+                        const childFillStyle = await getVarName(child.fillStyleId);
+                        if (childFillStyle) return childFillStyle;
+                    }
+                }
+            }
+            return null;
+        };
+
+        // Deep Icon Detection (recursive)
+        // M3 components may have leading/trailing icons as VECTOR nodes
+        // or small icon-wrapper Frames. We deep-scan to find them.
+        const findIconAndText = async function (n, results) {
+            if (!results) results = { icons: [], textIndex: -1, flatIndex: 0 };
+            if (n.type === 'TEXT') {
+                results.textIndex = results.flatIndex;
+                results.flatIndex++;
+                return results;
+            }
+            // Detect icon: VECTOR, BOOLEAN_OPERATION, or named 'icon'
+            const nName = n.name ? n.name.toLowerCase() : '';
+            const isIconNode = (n.type === 'VECTOR' || n.type === 'BOOLEAN_OPERATION')
+                || nName.includes('icon')
+                || (n.type === 'FRAME' && ('width' in n) && n.width <= 64 && n.height <= 64
+                    && ('children' in n) && n.children.length > 0
+                    && n.children.every(function (gc) {
+                        return gc.type === 'VECTOR' || gc.type === 'BOOLEAN_OPERATION';
+                    }));
+
+            if (isIconNode) {
+                const iconInfo = { name: n.name || 'icon', index: results.flatIndex };
+                // Extract icon color from boundVariables['fills'] or fillStyleId
+                if (n.boundVariables && n.boundVariables['fills']
+                    && Array.isArray(n.boundVariables['fills'])
+                    && n.boundVariables['fills'].length > 0) {
+                    const icToken = await getVarName(n.boundVariables['fills'][0].id);
+                    if (icToken) iconInfo.colorToken = icToken;
+                }
+                if (!iconInfo.colorToken && n.fillStyleId && n.fillStyleId !== "") {
+                    const icStyle = await getVarName(n.fillStyleId);
+                    if (icStyle) iconInfo.colorToken = icStyle;
+                }
+                // Also check vector children for fill tokens
+                if (!iconInfo.colorToken && 'children' in n && n.children.length > 0) {
+                    for (let j = 0; j < n.children.length; j++) {
+                        const vc = n.children[j];
+                        if (vc.type === 'VECTOR') {
+                            if (vc.boundVariables && vc.boundVariables['fills']
+                                && Array.isArray(vc.boundVariables['fills'])
+                                && vc.boundVariables['fills'].length > 0) {
+                                const vcToken = await getVarName(vc.boundVariables['fills'][0].id);
+                                if (vcToken) { iconInfo.colorToken = vcToken; break; }
+                            }
+                            if (!iconInfo.colorToken && vc.fillStyleId && vc.fillStyleId !== "") {
+                                const vcStyle = await getVarName(vc.fillStyleId);
+                                if (vcStyle) { iconInfo.colorToken = vcStyle; break; }
+                            }
+                        }
+                    }
+                }
+                results.icons.push(iconInfo);
+                results.flatIndex++;
+                return results;
+            }
+            // Recurse into children
+            if ('children' in n && n.children.length > 0) {
+                for (let i = 0; i < n.children.length; i++) {
+                    await findIconAndText(n.children[i], results);
+                }
+            }
+            return results;
+        };
+
+        // Helper: Extract text color token from a TEXT node
+        const extractTextColorToken = async function (textNode) {
+            if (textNode.boundVariables && textNode.boundVariables['fills']
+                && Array.isArray(textNode.boundVariables['fills'])
+                && textNode.boundVariables['fills'].length > 0) {
+                const tcToken = await getVarName(textNode.boundVariables['fills'][0].id);
+                if (tcToken) return tcToken;
+            }
+            if (textNode.fillStyleId && textNode.fillStyleId !== "") {
+                const textStyleName = await getVarName(textNode.fillStyleId);
+                if (textStyleName) return textStyleName;
+            }
+            return null;
+        };
+
         // موتور پیمایش
         let structureResult = null;
         const traverseNode = async function (node) {
@@ -142,155 +296,25 @@ const runPlugin = async function () {
                     }
                 }
 
-                // --- Deep Text Extraction (recursive) ---
-                // M3 buttons nest text deep: Frame > State Layer > Label Text
-                // We recursively find the FIRST Text node at any depth.
-                const findFirstText = async function (n) {
-                    if (n.type === 'TEXT') return n;
-                    if ('children' in n && n.children.length > 0) {
-                        for (let i = 0; i < n.children.length; i++) {
-                            const found = await findFirstText(n.children[i]);
-                            if (found) return found;
-                        }
-                    }
-                    return null;
-                };
-
+                // --- Deep Text Extraction (using global helper) ---
                 const textNode = await findFirstText(node);
                 if (textNode) {
                     nodeData.settings.text = textNode.characters;
 
-                    // Text color: prefer boundVariables['fills'], fallback to fillStyleId
-                    let textColorResolved = false;
-                    if (textNode.boundVariables && textNode.boundVariables['fills']
-                        && Array.isArray(textNode.boundVariables['fills'])
-                        && textNode.boundVariables['fills'].length > 0) {
-                        const tcToken = await getVarName(textNode.boundVariables['fills'][0].id);
-                        if (tcToken) {
-                            nodeData.tokens.textColor = tcToken;
-                            textColorResolved = true;
-                        }
-                    }
-                    if (!textColorResolved && textNode.fillStyleId && textNode.fillStyleId !== "") {
-                        const textStyleName = await getVarName(textNode.fillStyleId);
-                        if (textStyleName) nodeData.tokens.textColor = textStyleName;
+                    // Text color: using global extractTextColorToken helper
+                    const textColorToken = await extractTextColorToken(textNode);
+                    if (textColorToken) {
+                        nodeData.tokens.textColor = textColorToken;
                     }
                 }
 
-                // --- Deep Background Fill Extraction ---
-                // 1. Check main button node for boundVariables['fills']
-                let fillResolved = false;
-                if (node.boundVariables && node.boundVariables['fills']
-                    && Array.isArray(node.boundVariables['fills'])
-                    && node.boundVariables['fills'].length > 0) {
-                    const fillToken = await getVarName(node.boundVariables['fills'][0].id);
-                    if (fillToken) {
-                        nodeData.tokens.fill = fillToken;
-                        fillResolved = true;
-                    }
-                }
-                // 2. Fallback: check main node's fillStyleId
-                if (!fillResolved && node.fillStyleId && node.fillStyleId !== "") {
-                    const fillStyleName = await getVarName(node.fillStyleId);
-                    if (fillStyleName) {
-                        nodeData.tokens.fill = fillStyleName;
-                        fillResolved = true;
-                    }
-                }
-                // 3. M3 Deep Fill: check immediate children (e.g. "State layer" frames)
-                if (!fillResolved && "children" in node && node.children.length > 0) {
-                    for (let i = 0; i < node.children.length; i++) {
-                        const child = node.children[i];
-                        // Skip TEXT nodes — we only want container/frame children
-                        if (child.type === 'TEXT') continue;
-
-                        // Try child's boundVariables['fills']
-                        if (child.boundVariables && child.boundVariables['fills']
-                            && Array.isArray(child.boundVariables['fills'])
-                            && child.boundVariables['fills'].length > 0) {
-                            const childFillToken = await getVarName(child.boundVariables['fills'][0].id);
-                            if (childFillToken) {
-                                nodeData.tokens.fill = childFillToken;
-                                fillResolved = true;
-                                break;
-                            }
-                        }
-                        // Try child's fillStyleId
-                        if (!fillResolved && child.fillStyleId && child.fillStyleId !== "") {
-                            const childFillStyle = await getVarName(child.fillStyleId);
-                            if (childFillStyle) {
-                                nodeData.tokens.fill = childFillStyle;
-                                fillResolved = true;
-                                break;
-                            }
-                        }
-                    }
+                // --- Deep Background Fill Extraction (using global helper) ---
+                const fillToken = await extractDeepBackground(node);
+                if (fillToken) {
+                    nodeData.tokens.fill = fillToken;
                 }
 
-                // --- Deep Icon Detection inside Button ---
-                // M3 buttons may have leading/trailing icons as VECTOR nodes
-                // or small icon-wrapper Frames. We deep-scan to find them.
-                const findIconAndText = async function (n, results) {
-                    if (!results) results = { icons: [], textIndex: -1, flatIndex: 0 };
-                    if (n.type === 'TEXT') {
-                        results.textIndex = results.flatIndex;
-                        results.flatIndex++;
-                        return results;
-                    }
-                    // Detect icon: VECTOR, BOOLEAN_OPERATION, or named 'icon'
-                    const nName = n.name ? n.name.toLowerCase() : '';
-                    const isIconNode = (n.type === 'VECTOR' || n.type === 'BOOLEAN_OPERATION')
-                        || nName.includes('icon')
-                        || (n.type === 'FRAME' && ('width' in n) && n.width <= 64 && n.height <= 64
-                            && ('children' in n) && n.children.length > 0
-                            && n.children.every(function (gc) {
-                                return gc.type === 'VECTOR' || gc.type === 'BOOLEAN_OPERATION';
-                            }));
-
-                    if (isIconNode) {
-                        const iconInfo = { name: n.name || 'icon', index: results.flatIndex };
-                        // Extract icon color from boundVariables['fills'] or fillStyleId
-                        if (n.boundVariables && n.boundVariables['fills']
-                            && Array.isArray(n.boundVariables['fills'])
-                            && n.boundVariables['fills'].length > 0) {
-                            const icToken = await getVarName(n.boundVariables['fills'][0].id);
-                            if (icToken) iconInfo.colorToken = icToken;
-                        }
-                        if (!iconInfo.colorToken && n.fillStyleId && n.fillStyleId !== "") {
-                            const icStyle = await getVarName(n.fillStyleId);
-                            if (icStyle) iconInfo.colorToken = icStyle;
-                        }
-                        // Also check vector children for fill tokens
-                        if (!iconInfo.colorToken && 'children' in n && n.children.length > 0) {
-                            for (let j = 0; j < n.children.length; j++) {
-                                const vc = n.children[j];
-                                if (vc.type === 'VECTOR') {
-                                    if (vc.boundVariables && vc.boundVariables['fills']
-                                        && Array.isArray(vc.boundVariables['fills'])
-                                        && vc.boundVariables['fills'].length > 0) {
-                                        const vcToken = await getVarName(vc.boundVariables['fills'][0].id);
-                                        if (vcToken) { iconInfo.colorToken = vcToken; break; }
-                                    }
-                                    if (!iconInfo.colorToken && vc.fillStyleId && vc.fillStyleId !== "") {
-                                        const vcStyle = await getVarName(vc.fillStyleId);
-                                        if (vcStyle) { iconInfo.colorToken = vcStyle; break; }
-                                    }
-                                }
-                            }
-                        }
-                        results.icons.push(iconInfo);
-                        results.flatIndex++;
-                        return results;
-                    }
-                    // Recurse into children
-                    if ('children' in n && n.children.length > 0) {
-                        for (let i = 0; i < n.children.length; i++) {
-                            await findIconAndText(n.children[i], results);
-                        }
-                    }
-                    return results;
-                };
-
+                // --- Deep Icon Detection inside Button (using global helper) ---
                 const iconScan = await findIconAndText(node, null);
                 if (iconScan.icons.length > 0) {
                     const firstIcon = iconScan.icons[0];
@@ -570,6 +594,137 @@ const runPlugin = async function () {
                             if (vecFill && !nodeData.tokens.fill) nodeData.tokens.fill = vecFill;
                             break;
                         }
+                    }
+                }
+
+                return nodeData;
+            }
+
+            // --- Alert / Banner / Snackbar Detection ---
+            const isAlert = lowerName.includes('alert') || lowerName.includes('banner') || lowerName.includes('snackbar');
+            if (isAlert) {
+                nodeData.type = "SMART_WIDGET";
+                nodeData.widgetType = "alert";
+                nodeData.settings = {};
+
+                // Background fill via global deep extraction
+                const alertFill = await extractDeepBackground(node);
+                if (alertFill) {
+                    nodeData.tokens.fill = alertFill;
+                }
+
+                // Alert text via global deep text extraction
+                const alertTextNode = await findFirstText(node);
+                if (alertTextNode) {
+                    nodeData.settings.text = alertTextNode.characters;
+                    // Extract text color token
+                    const alertTextColor = await extractTextColorToken(alertTextNode);
+                    if (alertTextColor) {
+                        nodeData.tokens.textColor = alertTextColor;
+                    }
+                }
+
+                // Border radius
+                if ("topLeftRadius" in node) {
+                    nodeData.rawValues.topLeftRadius = node.topLeftRadius;
+                    nodeData.rawValues.topRightRadius = node.topRightRadius;
+                    nodeData.rawValues.bottomRightRadius = node.bottomRightRadius;
+                    nodeData.rawValues.bottomLeftRadius = node.bottomLeftRadius;
+                }
+                if (node.boundVariables) {
+                    const rProps = ['topLeftRadius', 'topRightRadius', 'bottomRightRadius', 'bottomLeftRadius'];
+                    for (let i = 0; i < rProps.length; i++) {
+                        if (node.boundVariables[rProps[i]]) {
+                            const tName = await getVarName(node.boundVariables[rProps[i]].id);
+                            if (tName) nodeData.tokens[rProps[i]] = tName;
+                        }
+                    }
+                }
+
+                // Check for dismiss icon via findIconAndText
+                const alertIconScan = await findIconAndText(node, null);
+                if (alertIconScan.icons.length > 0) {
+                    // Check if any icon suggests dismiss/close
+                    nodeData.settings.showDismiss = 'yes';
+                }
+
+                return nodeData;
+            }
+
+            // --- Linear Progress Detection ---
+            const isProgress = lowerName.includes('progress');
+            if (isProgress) {
+                nodeData.type = "SMART_WIDGET";
+                nodeData.widgetType = "progress";
+                nodeData.settings = {};
+
+                // Track color (main background fill)
+                const trackFill = await extractDeepBackground(node);
+                if (trackFill) {
+                    nodeData.tokens.fill = trackFill;
+                }
+
+                // Find the indicator: first child frame/vector with width > 0
+                if ("children" in node && node.children.length > 0) {
+                    for (let i = 0; i < node.children.length; i++) {
+                        const child = node.children[i];
+                        if (child.type === 'TEXT') continue;
+                        if ('width' in child && child.width > 0) {
+                            // Extract indicator fill color
+                            if (child.boundVariables && child.boundVariables['fills']
+                                && Array.isArray(child.boundVariables['fills'])
+                                && child.boundVariables['fills'].length > 0) {
+                                const indToken = await getVarName(child.boundVariables['fills'][0].id);
+                                if (indToken) nodeData.tokens.progressColor = indToken;
+                            }
+                            if (!nodeData.tokens.progressColor && child.fillStyleId && child.fillStyleId !== "") {
+                                const indStyle = await getVarName(child.fillStyleId);
+                                if (indStyle) nodeData.tokens.progressColor = indStyle;
+                            }
+
+                            // Calculate percentage
+                            if ('width' in node && node.width > 0) {
+                                nodeData.rawValues.percentage = Math.round((child.width / node.width) * 100);
+                            }
+                            break;
+                        }
+                    }
+                }
+
+                return nodeData;
+            }
+
+            // --- Icon Box / List Item / Feature Card Detection ---
+            const isIconBox = lowerName.includes('iconbox') || lowerName.includes('list item') || lowerName.includes('feature');
+            if (isIconBox) {
+                nodeData.type = "SMART_WIDGET";
+                nodeData.widgetType = "icon-box";
+                nodeData.settings = {};
+
+                // Extract icon using global helper
+                const iconBoxScan = await findIconAndText(node, null);
+                if (iconBoxScan.icons.length > 0) {
+                    const primaryIcon = iconBoxScan.icons[0];
+                    nodeData.settings.iconName = primaryIcon.name;
+                    if (primaryIcon.colorToken) {
+                        nodeData.tokens.iconColor = primaryIcon.colorToken;
+                    }
+                }
+
+                // Find first TWO text nodes for title and description
+                const textNodes = await findTextNodes(node, 2, null);
+                if (textNodes.length > 0) {
+                    nodeData.settings.title = textNodes[0].characters;
+                    const titleColor = await extractTextColorToken(textNodes[0]);
+                    if (titleColor) {
+                        nodeData.tokens.titleColor = titleColor;
+                    }
+                }
+                if (textNodes.length > 1) {
+                    nodeData.settings.description = textNodes[1].characters;
+                    const descColor = await extractTextColorToken(textNodes[1]);
+                    if (descColor) {
+                        nodeData.tokens.descriptionColor = descColor;
                     }
                 }
 
