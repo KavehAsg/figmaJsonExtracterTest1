@@ -329,7 +329,7 @@ const runPlugin = async function () {
                 return nodeData;
             }
 
-            // --- M3 Composite / Form Element Detection (Smart Decomposition) ---
+            // --- Form Element Detection (1:1 Native Elementor Mapping) ---
             // Detect form-like names: input, textarea, checkbox, radio, search, textfield
             const formType = lowerName.includes('input') ? 'form_input'
                 : lowerName.includes('textarea') ? 'form_textarea'
@@ -339,102 +339,6 @@ const runPlugin = async function () {
                                 : lowerName.includes('textfield') ? 'form_input' : null;
 
             if (formType) {
-                // --- M3 Smart Decomposition Check ---
-                // If this Frame contains vector/icon children alongside text,
-                // do NOT collapse it into a single form widget.
-                // Instead, treat the Frame as a normal container and mark
-                // only the inner Text node as the form_input SMART_WIDGET.
-                const hasVectorChildren = ("children" in node && node.children.length > 0)
-                    ? node.children.some(function (c) {
-                        // Check for direct vector children or icon-like frames
-                        if (c.type === 'VECTOR' || c.type === 'BOOLEAN_OPERATION') return true;
-                        const cName = c.name ? c.name.toLowerCase() : '';
-                        if (cName.includes('icon')) return true;
-                        // Small frames with all-vector children = icon wrapper
-                        if (c.type === 'FRAME' && ('width' in c) && c.width <= 64 && c.height <= 64
-                            && ('children' in c) && c.children.length > 0
-                            && c.children.every(function (gc) {
-                                return gc.type === 'VECTOR' || gc.type === 'BOOLEAN_OPERATION';
-                            })) return true;
-                        return false;
-                    })
-                    : false;
-
-                if (hasVectorChildren && (node.type === 'FRAME' || node.type === 'INSTANCE' || node.type === 'COMPONENT')) {
-                    // --- M3 COMPOSITE MODE ---
-                    // Treat this Frame as a standard container (keep bg, radius, flex)
-                    // Do NOT return early; fall through to normal container processing.
-                    // But first, we need to custom-traverse children:
-                    //   - Text nodes that act as placeholders → SMART_WIDGET form_input
-                    //   - Vector/Icon children → normal icon processing (handled by recursion)
-                    //   - Other children → normal recursion
-                    nodeData.isM3Composite = true;
-
-                    // Extract container styling (padding, radius, bg) normally
-                    if ("paddingTop" in node) {
-                        nodeData.rawValues.paddingTop = node.paddingTop;
-                        nodeData.rawValues.paddingRight = node.paddingRight;
-                        nodeData.rawValues.paddingBottom = node.paddingBottom;
-                        nodeData.rawValues.paddingLeft = node.paddingLeft;
-                    }
-                    if ("topLeftRadius" in node) {
-                        nodeData.rawValues.topLeftRadius = node.topLeftRadius;
-                        nodeData.rawValues.topRightRadius = node.topRightRadius;
-                        nodeData.rawValues.bottomRightRadius = node.bottomRightRadius;
-                        nodeData.rawValues.bottomLeftRadius = node.bottomLeftRadius;
-                    }
-                    if (node.boundVariables) {
-                        const containerProps = ['paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'topLeftRadius', 'topRightRadius', 'bottomRightRadius', 'bottomLeftRadius'];
-                        for (let i = 0; i < containerProps.length; i++) {
-                            if (node.boundVariables[containerProps[i]]) {
-                                const tName = await getVarName(node.boundVariables[containerProps[i]].id);
-                                if (tName) nodeData.tokens[containerProps[i]] = tName;
-                            }
-                        }
-                    }
-
-                    // Traverse children with smart decomposition
-                    if ("children" in node && node.children.length > 0) {
-                        const decomposedChildren = [];
-                        for (let i = 0; i < node.children.length; i++) {
-                            const child = node.children[i];
-                            const childLowerName = child.name ? child.name.toLowerCase() : '';
-
-                            // Identify the placeholder/label Text node inside the M3 input
-                            // Common M3 names: "State layer", "Content", "Label text", "Placeholder",
-                            // or simply any TEXT child that isn't part of an icon
-                            if (child.type === 'TEXT') {
-                                const textNodeData = {
-                                    id: child.id,
-                                    name: child.name,
-                                    type: "SMART_WIDGET",
-                                    widgetType: formType,
-                                    layoutMode: "NONE",
-                                    isM3TransparentInput: true,
-                                    tokens: {},
-                                    rawValues: {},
-                                    settings: {
-                                        placeholder: child.characters || ''
-                                    }
-                                };
-                                if ("width" in child) textNodeData.rawValues.width = child.width;
-                                if ("height" in child) textNodeData.rawValues.height = child.height;
-                                decomposedChildren.push(textNodeData);
-                            } else {
-                                // All other children (icons, vectors, nested frames)
-                                // are processed via normal recursive traversal
-                                const childResult = await traverseNode(child);
-                                if (childResult) decomposedChildren.push(childResult);
-                            }
-                        }
-                        nodeData.children = decomposedChildren;
-                    }
-                    // Let it fall through to normal return (not early return)
-                    // nodeData.type remains 'FRAME', processed as container by PHP
-                    return nodeData;
-                }
-
-                // --- SIMPLE FORM MODE (no icons, no M3 composite) ---
                 nodeData.type = "SMART_WIDGET";
                 nodeData.widgetType = formType;
                 nodeData.settings = {};
@@ -447,7 +351,7 @@ const runPlugin = async function () {
                     nodeData.rawValues.bottomLeftRadius = node.bottomLeftRadius;
                 }
 
-                // Stroke/border color
+                // Stroke/border color (raw)
                 if (node.strokes && node.strokes.length > 0 && node.strokes[0].type === 'SOLID') {
                     const stroke = node.strokes[0];
                     const sOpacity = stroke.opacity !== undefined ? stroke.opacity : 1;
@@ -469,14 +373,16 @@ const runPlugin = async function () {
                     }
                 }
 
-                // Placeholder text from child TEXT node
-                if ("children" in node && node.children.length > 0) {
-                    for (let i = 0; i < node.children.length; i++) {
-                        if (node.children[i].type === "TEXT") {
-                            nodeData.settings.placeholder = node.children[i].characters;
-                            break;
-                        }
-                    }
+                // Fill color via deep extraction (handles M3 State Layers)
+                const formFill = await extractDeepBackground(node);
+                if (formFill) {
+                    nodeData.tokens.fill = formFill;
+                }
+
+                // Placeholder text via deep text extraction (handles M3 nested labels)
+                const formTextNode = await findFirstText(node);
+                if (formTextNode) {
+                    nodeData.settings.placeholder = formTextNode.characters;
                 }
 
                 return nodeData;

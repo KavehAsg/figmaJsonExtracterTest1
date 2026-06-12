@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Figma to Elementor Importer
  * Description: نسخه پایدار با استخراج ابعاد، رنگ پس‌زمینه و رفع باگ UI
- * Version: 2.8.0
+ * Version: 2.9.0
  * Author: Kaveh
  */
 
@@ -433,9 +433,6 @@ function convert_figma_node($node)
             ];
             $field_type = $field_type_map[$node['widgetType']];
 
-            // Check if this is an M3 transparent input (decomposed from a composite)
-            $is_m3_transparent = !empty($node['isM3TransparentInput']);
-
             $form_settings = [
                 'form_name' => 'Figma Form',
                 'show_labels' => '',
@@ -449,71 +446,38 @@ function convert_figma_node($node)
                 ],
             ];
 
-            if ($is_m3_transparent) {
-                // --- M3 Transparent Flex-Grow Mode ---
-                // The parent container already provides bg, border-radius, and padding.
-                // This input must be invisible and stretch to fill remaining space.
-                $form_settings['field_background_color'] = 'transparent';
-                $form_settings['field_border_color'] = 'transparent';
-                $form_settings['field_border_width'] = ['size' => 0, 'unit' => 'px'];
-                // Remove default field padding so parent container handles it
-                $form_settings['field_text_padding'] = [
-                    'unit' => 'px',
-                    'isLinked' => true,
-                    'top' => 0,
-                    'right' => 0,
-                    'bottom' => 0,
-                    'left' => 0,
-                ];
-                // Flex-grow: ensure the input takes up all remaining space
-                // In Elementor, this is achieved via custom width 100% on the widget
-                $form_settings['_element_custom_width'] = ['size' => 100, 'unit' => '%'];
-            } else {
-                // --- Standard form input styling ---
-                // Field background color
-                $bg_color = kaveh_resolve_token($node, 'fill');
-                if ($bg_color) {
-                    $form_settings['field_background_color'] = $bg_color;
-                }
-
-                // Field border color
-                $border_color = kaveh_resolve_token($node, 'borderColor');
-                if ($border_color) {
-                    $form_settings['field_border_color'] = $border_color;
-                } elseif (!empty($node['rawValues']['borderColor'])) {
-                    $form_settings['field_border_color'] = $node['rawValues']['borderColor'];
-                }
-
-                // Field border radius
-                $radius = kaveh_build_dimensions_array($node, [
-                    'topLeftRadius' => 'top',
-                    'topRightRadius' => 'right',
-                    'bottomRightRadius' => 'bottom',
-                    'bottomLeftRadius' => 'left',
-                ]);
-                if ($radius) {
-                    $form_settings['field_border_radius'] = $radius;
-                }
+            // Field background color
+            $bg_color = kaveh_resolve_token($node, 'fill');
+            if ($bg_color) {
+                $form_settings['field_background_color'] = $bg_color;
             }
 
-            $widget_data = [
+            // Field border color
+            $border_color = kaveh_resolve_token($node, 'borderColor');
+            if ($border_color) {
+                $form_settings['field_border_color'] = $border_color;
+            } elseif (!empty($node['rawValues']['borderColor'])) {
+                $form_settings['field_border_color'] = $node['rawValues']['borderColor'];
+            }
+
+            // Field border radius
+            $radius = kaveh_build_dimensions_array($node, [
+                'topLeftRadius' => 'top',
+                'topRightRadius' => 'right',
+                'bottomRightRadius' => 'bottom',
+                'bottomLeftRadius' => 'left',
+            ]);
+            if ($radius) {
+                $form_settings['field_border_radius'] = $radius;
+            }
+
+            return [
                 'id' => $el_id,
                 'elType' => 'widget',
                 'widgetType' => 'form',
                 'settings' => $form_settings,
                 'elements' => [],
             ];
-
-            // For M3 transparent inputs, also set the widget-level width to grow
-            if ($is_m3_transparent) {
-                $widget_data['settings']['_element_width'] = 'auto';
-                $widget_data['settings']['_flex_size'] = [
-                    'size' => 1,
-                    'unit' => 'fr',
-                ];
-            }
-
-            return $widget_data;
         }
 
         // Image / Avatar
@@ -723,33 +687,7 @@ function convert_figma_node($node)
             $element['settings']['background_color'] = 'var(--' . $bg_token . ')';
         }
 
-        // 6. M3 Composite Container enhancements (padding, radius, alignment)
-        if (!empty($node['isM3Composite'])) {
-            // Padding from the M3 frame
-            $padding = kaveh_build_dimensions_array($node, [
-                'paddingTop' => 'top',
-                'paddingRight' => 'right',
-                'paddingBottom' => 'bottom',
-                'paddingLeft' => 'left',
-            ]);
-            if ($padding) {
-                $element['settings']['padding'] = $padding;
-            }
 
-            // Border radius from the M3 frame
-            $radius = kaveh_build_dimensions_array($node, [
-                'topLeftRadius' => 'top',
-                'topRightRadius' => 'right',
-                'bottomRightRadius' => 'bottom',
-                'bottomLeftRadius' => 'left',
-            ]);
-            if ($radius) {
-                $element['settings']['border_radius'] = $radius;
-            }
-
-            // Vertically center children (icon + input align on cross-axis)
-            $element['settings']['flex_align_items'] = 'center';
-        }
 
         // پیمایش فرزندان
         if (!empty($node['children'])) {
@@ -835,7 +773,7 @@ function kaveh_render_admin_page()
     }
     ?>
     <div class="wrap">
-        <h1 style="margin-bottom: 20px;">Figma Importer 2.8 🚀</h1>
+        <h1 style="margin-bottom: 20px;">Figma Importer 2.9 🚀</h1>
         <?php echo $message; ?>
         <form method="post" enctype="multipart/form-data" style="max-width: 650px; background: #fff; padding: 25px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); border: 1px solid #ccd0d4;">
             
