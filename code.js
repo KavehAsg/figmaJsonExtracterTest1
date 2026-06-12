@@ -360,7 +360,7 @@ const runPlugin = async function () {
                     })
                     : false;
 
-                if (hasVectorChildren && node.type === 'FRAME') {
+                if (hasVectorChildren && (node.type === 'FRAME' || node.type === 'INSTANCE' || node.type === 'COMPONENT')) {
                     // --- M3 COMPOSITE MODE ---
                     // Treat this Frame as a standard container (keep bg, radius, flex)
                     // Do NOT return early; fall through to normal container processing.
@@ -651,85 +651,7 @@ const runPlugin = async function () {
                 return nodeData;
             }
 
-            // --- Linear Progress Detection ---
-            const isProgress = lowerName.includes('progress');
-            if (isProgress) {
-                nodeData.type = "SMART_WIDGET";
-                nodeData.widgetType = "progress";
-                nodeData.settings = {};
 
-                // Track color (main background fill)
-                const trackFill = await extractDeepBackground(node);
-                if (trackFill) {
-                    nodeData.tokens.fill = trackFill;
-                }
-
-                // Find the indicator: first child frame/vector with width > 0
-                if ("children" in node && node.children.length > 0) {
-                    for (let i = 0; i < node.children.length; i++) {
-                        const child = node.children[i];
-                        if (child.type === 'TEXT') continue;
-                        if ('width' in child && child.width > 0) {
-                            // Extract indicator fill color
-                            if (child.boundVariables && child.boundVariables['fills']
-                                && Array.isArray(child.boundVariables['fills'])
-                                && child.boundVariables['fills'].length > 0) {
-                                const indToken = await getVarName(child.boundVariables['fills'][0].id);
-                                if (indToken) nodeData.tokens.progressColor = indToken;
-                            }
-                            if (!nodeData.tokens.progressColor && child.fillStyleId && child.fillStyleId !== "") {
-                                const indStyle = await getVarName(child.fillStyleId);
-                                if (indStyle) nodeData.tokens.progressColor = indStyle;
-                            }
-
-                            // Calculate percentage
-                            if ('width' in node && node.width > 0) {
-                                nodeData.rawValues.percentage = Math.round((child.width / node.width) * 100);
-                            }
-                            break;
-                        }
-                    }
-                }
-
-                return nodeData;
-            }
-
-            // --- Icon Box / List Item / Feature Card Detection ---
-            const isIconBox = lowerName.includes('iconbox') || lowerName.includes('list item') || lowerName.includes('feature');
-            if (isIconBox) {
-                nodeData.type = "SMART_WIDGET";
-                nodeData.widgetType = "icon-box";
-                nodeData.settings = {};
-
-                // Extract icon using global helper
-                const iconBoxScan = await findIconAndText(node, null);
-                if (iconBoxScan.icons.length > 0) {
-                    const primaryIcon = iconBoxScan.icons[0];
-                    nodeData.settings.iconName = primaryIcon.name;
-                    if (primaryIcon.colorToken) {
-                        nodeData.tokens.iconColor = primaryIcon.colorToken;
-                    }
-                }
-
-                // Find first TWO text nodes for title and description
-                const textNodes = await findTextNodes(node, 2, null);
-                if (textNodes.length > 0) {
-                    nodeData.settings.title = textNodes[0].characters;
-                    const titleColor = await extractTextColorToken(textNodes[0]);
-                    if (titleColor) {
-                        nodeData.tokens.titleColor = titleColor;
-                    }
-                }
-                if (textNodes.length > 1) {
-                    nodeData.settings.description = textNodes[1].characters;
-                    const descColor = await extractTextColorToken(textNodes[1]);
-                    if (descColor) {
-                        nodeData.tokens.descriptionColor = descColor;
-                    }
-                }
-
-                return nodeData;
-            }
 
             if ("children" in node && node.children.length > 0) {
                 const childrenPromises = node.children.map(function (child) { return traverseNode(child); });
