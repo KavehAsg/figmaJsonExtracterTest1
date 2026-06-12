@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Termeh Export</title>
+    <style>
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #333333;
+            --btn-bg: #18A0FB;
+            --btn-hover: #0D8DE2;
+            --btn-text: #ffffff;
+            --border-color: #E5E5E5;
+        }
+
+        /* Figma UI Theme Support */
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg-color: #2C2C2C;
+                --text-color: #FFFFFF;
+                --btn-bg: #0D99FF;
+                --btn-hover: #007BE5;
+                --border-color: #444444;
+            }
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            box-sizing: border-box;
+            text-align: center;
+        }
+
+        h2 {
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        p {
+            font-size: 12px;
+            margin-bottom: 24px;
+            color: #888;
+        }
+
+        button {
+            background-color: var(--btn-bg);
+            color: var(--btn-text);
+            border: none;
+            border-radius: 6px;
+            padding: 10px 16px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        button:hover:not(:disabled) {
+            background-color: var(--btn-hover);
+        }
+
+        button:disabled {
+            background-color: #CFCFCF;
+            cursor: not-allowed;
+            color: #666;
+        }
+        
+        .loading {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .icon {
+            width: 16px;
+            height: 16px;
+            fill: currentColor;
+        }
+
+        #status {
+            font-size: 11px;
+            margin-top: 16px;
+            color: #18A0FB;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <h2>Figma to Elementor</h2>
+    <p>Extract tokens, variables, and structure.</p>
+
+    <button id="export-btn" disabled>
+        <span class="loading" id="loading-spinner"></span>
+        <span id="btn-text">Extracting Data...</span>
+    </button>
+    <div id="status">Ready to download!</div>
+
+    <script>
+        let extractedData = null;
+        const btn = document.getElementById('export-btn');
+        const btnText = document.getElementById('btn-text');
+        const spinner = document.getElementById('loading-spinner');
+        const status = document.getElementById('status');
+
+        window.onmessage = async (event) => {
+            const msg = event.data.pluginMessage;
+
+            if (msg.type === 'export-data') {
+                extractedData = msg.payload;
+                btn.disabled = false;
+                spinner.style.display = 'none';
+                btnText.innerHTML = `
+                    <svg class="icon" viewBox="0 0 24 24">
+                        <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
+                    </svg>
+                    Download JSON
+                `;
+            } else if (msg.type === 'error') {
+                btnText.textContent = "Error occurred";
+                spinner.style.display = 'none';
+                status.style.display = 'block';
+                status.style.color = '#F24822';
+                status.textContent = msg.message;
+            }
+        };
+
+        btn.onclick = () => {
+            if (!extractedData) return;
+
+            // Trigger download
+            const dataStr = JSON.stringify(extractedData, null, 2);
+            const blob = new Blob([dataStr], { type: "application/json" });
+            const url = URL.createObjectURL(blob);
+            
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = "figma-export.json";
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            status.style.display = 'block';
+            status.style.color = '#18A0FB';
+            status.textContent = "Downloaded successfully!";
+            
+            // Wait a moment before closing to show success message
+            setTimeout(() => {
+                parent.postMessage({ pluginMessage: { type: 'close' } }, '*');
+            }, 1500);
+        };
+    </script>
+</body>
+</html>
