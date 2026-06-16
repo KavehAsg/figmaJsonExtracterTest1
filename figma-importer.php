@@ -971,39 +971,312 @@ function kaveh_render_admin_page()
             if ($data) {
                 $res = create_elementor_template($data);
                 if ($res === 'only_tokens') {
-                    $message = "<div class='updated'><p>✅ توکن‌ها آپدیت شدند. قالبی ساخته نشد.</p></div>";
+                    $message = '<div class="ki-toast ki-toast--success"><span class="ki-toast__icon">✅</span> Design tokens synced successfully. No template was created.</div>';
                 } elseif ($res) {
                     $edit_link = admin_url('post.php?post=' . $res . '&action=elementor');
-                    $message = "<div class='updated'><p>✅ قالب با موفقیت ساخته شد! <a href='$edit_link' target='_blank'>ویرایش با المنتور</a></p></div>";
+                    $message = '<div class="ki-toast ki-toast--success"><span class="ki-toast__icon">🎉</span> Template created! <a href="' . $edit_link . '" target="_blank" class="ki-toast__link">Open in Elementor →</a></div>';
                 } else {
-                    $message = "<div class='error'><p>❌ خطا در پردازش.</p></div>";
+                    $message = '<div class="ki-toast ki-toast--error"><span class="ki-toast__icon">❌</span> Error processing the import.</div>';
                 }
             } else {
-                $message = "<div class='error'><p>❌ جیسون نامعتبر.</p></div>";
+                $message = '<div class="ki-toast ki-toast--error"><span class="ki-toast__icon">❌</span> Invalid JSON format.</div>';
             }
         } elseif (isset($_POST['figma_json'])) {
-            $message = "<div class='error'><p>❌ لطفاً فایل JSON آپلود کنید یا محتوای آن را پیست کنید.</p></div>";
+            $message = '<div class="ki-toast ki-toast--error"><span class="ki-toast__icon">⚠️</span> Please upload a JSON file or paste JSON content.</div>';
         }
     }
     ?>
-    <div class="wrap">
-        <h1 style="margin-bottom: 20px;">Figma Importer 3.0 🚀</h1>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+        .ki-wrap {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 640px;
+            margin: 40px auto;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .ki-header {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            margin-bottom: 28px;
+        }
+
+        .ki-logo {
+            width: 44px;
+            height: 44px;
+            background: linear-gradient(135deg, #18A0FB 0%, #A259FF 100%);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 14px rgba(24, 160, 251, 0.25);
+            flex-shrink: 0;
+        }
+
+        .ki-logo svg {
+            width: 22px;
+            height: 22px;
+            fill: #fff;
+        }
+
+        .ki-header-text h1 {
+            font-size: 20px;
+            font-weight: 700;
+            color: #1e1e1e;
+            margin: 0 0 2px 0;
+            padding: 0;
+            letter-spacing: -0.02em;
+        }
+
+        .ki-header-text p {
+            font-size: 13px;
+            color: #8c8c8c;
+            margin: 0;
+        }
+
+        .ki-toast {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 14px 18px;
+            border-radius: 10px;
+            font-size: 13px;
+            font-weight: 500;
+            margin-bottom: 20px;
+            animation: ki-slideDown 0.3s ease;
+        }
+
+        @keyframes ki-slideDown {
+            from { opacity: 0; transform: translateY(-8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .ki-toast--success {
+            background: #ECFDF5;
+            color: #065F46;
+            border: 1px solid #A7F3D0;
+        }
+
+        .ki-toast--error {
+            background: #FEF2F2;
+            color: #991B1B;
+            border: 1px solid #FECACA;
+        }
+
+        .ki-toast__icon {
+            font-size: 16px;
+            flex-shrink: 0;
+        }
+
+        .ki-toast__link {
+            color: #18A0FB;
+            text-decoration: none;
+            font-weight: 600;
+            margin-left: auto;
+            white-space: nowrap;
+        }
+
+        .ki-toast__link:hover {
+            text-decoration: underline;
+        }
+
+        .ki-card {
+            background: #ffffff;
+            border-radius: 12px;
+            border: 1px solid #eaeaea;
+            border: none;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.04);
+            padding: 32px;
+        }
+
+        .ki-section {
+            margin-bottom: 28px;
+        }
+
+        .ki-section:last-of-type {
+            margin-bottom: 0;
+        }
+
+        .ki-section-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: #1e1e1e;
+            margin: 0 0 6px 0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .ki-section-title .ki-badge {
+            font-size: 10px;
+            font-weight: 600;
+            background: #EEF2FF;
+            color: #4F46E5;
+            padding: 2px 8px;
+            border-radius: 99px;
+            letter-spacing: 0.02em;
+            text-transform: uppercase;
+        }
+
+        .ki-section-desc {
+            font-size: 12px;
+            color: #8c8c8c;
+            margin: 0 0 14px 0;
+            line-height: 1.5;
+        }
+
+        .ki-file-input {
+            display: block;
+            width: 100%;
+            padding: 12px 16px;
+            background: #f9fafb;
+            border: 1.5px dashed #d1d5db;
+            border-radius: 8px;
+            font-family: inherit;
+            font-size: 13px;
+            color: #6b7280;
+            cursor: pointer;
+            transition: border-color 0.2s ease, background 0.2s ease;
+        }
+
+        .ki-file-input:hover {
+            border-color: #18A0FB;
+            background: #f0f9ff;
+        }
+
+        .ki-file-input:focus {
+            outline: none;
+            border-color: #18A0FB;
+            box-shadow: 0 0 0 3px rgba(24, 160, 251, 0.12);
+        }
+
+        .ki-divider {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin: 24px 0;
+            color: #d1d5db;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .ki-divider::before,
+        .ki-divider::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: #e5e7eb;
+        }
+
+        .ki-textarea {
+            display: block;
+            width: 100%;
+            height: 140px;
+            padding: 14px 16px;
+            background: #f9fafb;
+            border: 1.5px solid #e5e7eb;
+            border-radius: 8px;
+            font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', Consolas, monospace;
+            font-size: 12px;
+            line-height: 1.6;
+            color: #374151;
+            resize: vertical;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .ki-textarea:hover {
+            border-color: #d1d5db;
+        }
+
+        .ki-textarea:focus {
+            outline: none;
+            border-color: #18A0FB;
+            box-shadow: 0 0 0 3px rgba(24, 160, 251, 0.12);
+            background: #fff;
+        }
+
+        .ki-textarea::placeholder {
+            color: #9ca3af;
+        }
+
+        .ki-submit {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            width: 100%;
+            padding: 13px 24px;
+            margin-top: 28px;
+            background: linear-gradient(135deg, #18A0FB 0%, #0D8EE9 100%);
+            color: #ffffff;
+            border: none;
+            border-radius: 10px;
+            font-family: inherit;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.25s ease;
+            box-shadow: 0 4px 14px rgba(24, 160, 251, 0.25);
+            letter-spacing: -0.01em;
+        }
+
+        .ki-submit:hover {
+            background: linear-gradient(135deg, #0D8EE9 0%, #0B7AD4 100%);
+            box-shadow: 0 6px 20px rgba(24, 160, 251, 0.35);
+            transform: translateY(-1px);
+        }
+
+        .ki-submit:active {
+            transform: translateY(0);
+            box-shadow: 0 2px 8px rgba(24, 160, 251, 0.2);
+        }
+
+        .ki-submit svg {
+            width: 18px;
+            height: 18px;
+            fill: currentColor;
+        }
+    </style>
+
+    <div class="ki-wrap">
+        <div class="ki-header">
+            <div class="ki-logo">
+                <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+            </div>
+            <div class="ki-header-text">
+                <h1>Figma Importer</h1>
+                <p>Import your Figma design system into Elementor.</p>
+            </div>
+        </div>
+
         <?php echo $message; ?>
-        <form method="post" enctype="multipart/form-data" style="max-width: 650px; background: #fff; padding: 25px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); border: 1px solid #ccd0d4;">
-            
-            <h3 style="margin-top: 0;">۱. آپلود فایل JSON (پیشنهادی)</h3>
-            <p style="color: #666; margin-bottom: 10px;">فایل خروجی را از افزونه فیگما در اینجا آپلود کنید.</p>
-            <input type="file" name="figma_json_file" accept=".json" style="margin-bottom: 25px; display: block;" />
-            
-            <hr style="border: 0; border-top: 1px solid #eee; margin-bottom: 20px;">
-            
-            <h3>۲. یا متن JSON را پیست کنید</h3>
-            <textarea name="figma_json"
-                style="width:100%;height:150px;background:#f9f9f9;font-family:monospace;padding:15px; border: 1px solid #ccc; border-radius: 4px;"
-                placeholder="JSON جدید فیگما را پیست کنید..."></textarea>
-            <br><br>
-            <button class="button button-primary button-large" style="width: 100%; font-size: 16px; padding: 5px 0;">ایمپورت هوشمند</button>
-        </form>
+
+        <div class="ki-card">
+            <form method="post" enctype="multipart/form-data">
+
+                <div class="ki-section">
+                    <h3 class="ki-section-title">Upload JSON File <span class="ki-badge">Recommended</span></h3>
+                    <p class="ki-section-desc">Export from the Figma plugin and drop the file here.</p>
+                    <input type="file" name="figma_json_file" accept=".json" class="ki-file-input" />
+                </div>
+
+                <div class="ki-divider">or</div>
+
+                <div class="ki-section">
+                    <h3 class="ki-section-title">Paste JSON Content</h3>
+                    <p class="ki-section-desc">Alternatively, paste the raw JSON output below.</p>
+                    <textarea name="figma_json" class="ki-textarea" placeholder='{"designTokens": {...}, "structure": {...}}'></textarea>
+                </div>
+
+                <button type="submit" class="ki-submit">
+                    <svg viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+                    Smart Import
+                </button>
+
+            </form>
+        </div>
     </div>
     <?php
 }

@@ -2,173 +2,441 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Termeh Export</title>
+    <title>Termeh — Figma to Elementor</title>
     <style>
         :root {
-            --bg-color: #ffffff;
-            --text-color: #333333;
-            --btn-bg: #18A0FB;
-            --btn-hover: #0D8DE2;
-            --btn-text: #ffffff;
-            --border-color: #E5E5E5;
+            --color-bg: #ffffff;
+            --color-surface: #f7f7f8;
+            --color-text: #1e1e1e;
+            --color-text-secondary: #8c8c8c;
+            --color-primary: #18A0FB;
+            --color-primary-hover: #0D8EE9;
+            --color-primary-active: #0B7AD4;
+            --color-border: #e5e5e5;
+            --color-border-hover: #18A0FB;
+            --color-success: #14AE5C;
+            --color-error: #F24822;
+            --radius: 8px;
+            --radius-sm: 6px;
+            --transition: all 0.2s ease;
         }
 
-        /* Figma UI Theme Support */
         @media (prefers-color-scheme: dark) {
             :root {
-                --bg-color: #2C2C2C;
-                --text-color: #FFFFFF;
-                --btn-bg: #0D99FF;
-                --btn-hover: #007BE5;
-                --border-color: #444444;
+                --color-bg: #2c2c2c;
+                --color-surface: #383838;
+                --color-text: #ffffff;
+                --color-text-secondary: #9e9e9e;
+                --color-primary: #0D99FF;
+                --color-primary-hover: #007BE5;
+                --color-primary-active: #0068C6;
+                --color-border: #4a4a4a;
+                --color-border-hover: #0D99FF;
             }
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
         }
 
         body {
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            background-color: var(--bg-color);
-            color: var(--text-color);
-            margin: 0;
-            padding: 20px;
+            background: var(--color-bg);
+            color: var(--color-text);
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            height: 100vh;
-            box-sizing: border-box;
-            text-align: center;
+            min-height: 100vh;
+            padding: 24px;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
         }
 
-        h2 {
-            font-size: 14px;
-            font-weight: 600;
-            margin-bottom: 8px;
+        /* ===== Logo & Header ===== */
+        .header {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-bottom: 32px;
         }
 
-        p {
+        .logo-mark {
+            width: 48px;
+            height: 48px;
+            background: linear-gradient(135deg, #18A0FB 0%, #A259FF 100%);
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 16px;
+            box-shadow: 0 4px 12px rgba(24, 160, 251, 0.25);
+        }
+
+        .logo-mark svg {
+            width: 24px;
+            height: 24px;
+            fill: #fff;
+        }
+
+        .header h1 {
+            font-size: 16px;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            margin-bottom: 4px;
+        }
+
+        .header p {
             font-size: 12px;
-            margin-bottom: 24px;
-            color: #888;
+            color: var(--color-text-secondary);
+            line-height: 1.4;
         }
 
-        button {
-            background-color: var(--btn-bg);
-            color: var(--btn-text);
-            border: none;
-            border-radius: 6px;
-            padding: 10px 16px;
-            font-size: 13px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: background-color 0.2s;
+        /* ===== Button Container ===== */
+        .actions {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
             width: 100%;
+            max-width: 280px;
+            transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+
+        .actions.hidden {
+            opacity: 0;
+            transform: translateY(8px);
+            pointer-events: none;
+            position: absolute;
+        }
+
+        /* ===== Buttons ===== */
+        .btn {
             display: flex;
             align-items: center;
             justify-content: center;
             gap: 8px;
+            width: 100%;
+            padding: 11px 16px;
+            font-family: inherit;
+            font-size: 13px;
+            font-weight: 600;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            transition: var(--transition);
+            border: none;
+            outline: none;
+            position: relative;
+            overflow: hidden;
         }
 
-        button:hover:not(:disabled) {
-            background-color: var(--btn-hover);
+        .btn:focus-visible {
+            box-shadow: 0 0 0 2px var(--color-bg), 0 0 0 4px var(--color-primary);
         }
 
-        button:disabled {
-            background-color: #CFCFCF;
-            cursor: not-allowed;
-            color: #666;
+        .btn-primary {
+            background: var(--color-primary);
+            color: #ffffff;
         }
-        
-        .loading {
-            display: inline-block;
-            width: 14px;
-            height: 14px;
-            border: 2px solid rgba(255,255,255,0.3);
+
+        .btn-primary:hover {
+            background: var(--color-primary-hover);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(24, 160, 251, 0.3);
+        }
+
+        .btn-primary:active {
+            background: var(--color-primary-active);
+            transform: translateY(0);
+            box-shadow: none;
+        }
+
+        .btn-secondary {
+            background: transparent;
+            color: var(--color-text);
+            border: 1.5px solid var(--color-border);
+            font-weight: 500;
+        }
+
+        .btn-secondary:hover {
+            border-color: var(--color-border-hover);
+            color: var(--color-primary);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(24, 160, 251, 0.08);
+        }
+
+        .btn-secondary:active {
+            transform: translateY(0);
+            box-shadow: none;
+        }
+
+        .btn svg.icon {
+            width: 16px;
+            height: 16px;
+            fill: currentColor;
+            flex-shrink: 0;
+        }
+
+        /* ===== Loading State ===== */
+        .loading-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+            opacity: 0;
+            transform: translateY(8px);
+            transition: opacity 0.4s ease 0.15s, transform 0.4s ease 0.15s;
+            position: absolute;
+            pointer-events: none;
+        }
+
+        .loading-state.visible {
+            opacity: 1;
+            transform: translateY(0);
+            position: relative;
+            pointer-events: auto;
+        }
+
+        .spinner {
+            width: 36px;
+            height: 36px;
             border-radius: 50%;
-            border-top-color: #fff;
-            animation: spin 1s ease-in-out infinite;
+            border: 3px solid var(--color-border);
+            border-top-color: var(--color-primary);
+            animation: spin 0.8s linear infinite;
         }
 
         @keyframes spin {
             to { transform: rotate(360deg); }
         }
 
-        .icon {
-            width: 16px;
-            height: 16px;
-            fill: currentColor;
+        .loading-state p {
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--color-text-secondary);
+            animation: pulse 2s ease-in-out infinite;
         }
 
-        #status {
+        @keyframes pulse {
+            0%, 100% { opacity: 0.6; }
+            50% { opacity: 1; }
+        }
+
+        /* ===== Download State ===== */
+        .download-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 16px;
+            width: 100%;
+            max-width: 280px;
+            opacity: 0;
+            transform: translateY(8px);
+            transition: opacity 0.4s ease 0.15s, transform 0.4s ease 0.15s;
+            position: absolute;
+            pointer-events: none;
+        }
+
+        .download-state.visible {
+            opacity: 1;
+            transform: translateY(0);
+            position: relative;
+            pointer-events: auto;
+        }
+
+        .success-badge {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: var(--color-success);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            animation: popIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        .success-badge svg {
+            width: 20px;
+            height: 20px;
+            fill: #fff;
+        }
+
+        @keyframes popIn {
+            0% { transform: scale(0); }
+            100% { transform: scale(1); }
+        }
+
+        /* ===== Status Toast ===== */
+        .toast {
             font-size: 11px;
-            margin-top: 16px;
-            color: #18A0FB;
-            display: none;
+            font-weight: 500;
+            padding: 6px 12px;
+            border-radius: 4px;
+            background: var(--color-surface);
+            color: var(--color-text-secondary);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .toast.visible {
+            opacity: 1;
+        }
+
+        .toast.error {
+            background: #FFF0ED;
+            color: var(--color-error);
+        }
+
+        @media (prefers-color-scheme: dark) {
+            .toast.error {
+                background: #3D2020;
+            }
+        }
+
+        /* ===== Divider ===== */
+        .divider {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            width: 100%;
+            font-size: 11px;
+            color: var(--color-text-secondary);
+        }
+
+        .divider::before,
+        .divider::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: var(--color-border);
         }
     </style>
 </head>
 <body>
-    <h2>Figma to Elementor</h2>
-    <p>Extract tokens, variables, and structure.</p>
 
-    <button id="export-btn" disabled>
-        <span class="loading" id="loading-spinner"></span>
-        <span id="btn-text">Extracting Data...</span>
-    </button>
-    <div id="status">Ready to download!</div>
+    <div class="header">
+        <div class="logo-mark">
+            <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+        </div>
+        <h1>Termeh — Figma to Elementor</h1>
+        <p>Extract your design system with precision.</p>
+    </div>
+
+    <!-- Action Buttons -->
+    <div class="actions" id="actions">
+        <button class="btn btn-primary" id="btn-full">
+            <svg class="icon" viewBox="0 0 24 24"><path d="M4 6h16v2H4zm0 5h16v2H4zm0 5h16v2H4z"/></svg>
+            Extract Full UI
+        </button>
+        <div class="divider">or</div>
+        <button class="btn btn-secondary" id="btn-tokens">
+            <svg class="icon" viewBox="0 0 24 24"><path d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9c.83 0 1.5-.67 1.5-1.5 0-.39-.15-.74-.39-1.01-.23-.26-.38-.61-.38-1 0-.83.67-1.5 1.5-1.5H16c2.76 0 5-2.24 5-5 0-4.42-4.03-8-9-8zm-5.5 9c-.83 0-1.5-.67-1.5-1.5S5.67 9 6.5 9 8 9.67 8 10.5 7.33 12 6.5 12zm3-4C8.67 8 8 7.33 8 6.5S8.67 5 9.5 5s1.5.67 1.5 1.5S10.33 8 9.5 8zm5 0c-.83 0-1.5-.67-1.5-1.5S13.67 5 14.5 5s1.5.67 1.5 1.5S15.33 8 14.5 8zm3 4c-.83 0-1.5-.67-1.5-1.5S16.67 9 17.5 9s1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/></svg>
+            Sync Tokens Only
+        </button>
+    </div>
+
+    <!-- Loading State -->
+    <div class="loading-state" id="loading">
+        <div class="spinner"></div>
+        <p id="loading-text">Processing Design System...</p>
+    </div>
+
+    <!-- Download State -->
+    <div class="download-state" id="download-state">
+        <div class="success-badge">
+            <svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
+        </div>
+        <button class="btn btn-primary" id="btn-download">
+            <svg class="icon" viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+            Download JSON
+        </button>
+    </div>
+
+    <!-- Toast -->
+    <div class="toast" id="toast"></div>
 
     <script>
         let extractedData = null;
-        const btn = document.getElementById('export-btn');
-        const btnText = document.getElementById('btn-text');
-        const spinner = document.getElementById('loading-spinner');
-        const status = document.getElementById('status');
 
-        window.onmessage = async (event) => {
-            const msg = event.data.pluginMessage;
+        const actions = document.getElementById('actions');
+        const loading = document.getElementById('loading');
+        const loadingText = document.getElementById('loading-text');
+        const downloadState = document.getElementById('download-state');
+        const btnFull = document.getElementById('btn-full');
+        const btnTokens = document.getElementById('btn-tokens');
+        const btnDownload = document.getElementById('btn-download');
+        const toast = document.getElementById('toast');
 
-            if (msg.type === 'export-data') {
-                extractedData = msg.payload;
-                btn.disabled = false;
-                spinner.style.display = 'none';
-                btnText.innerHTML = `
-                    <svg class="icon" viewBox="0 0 24 24">
-                        <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
-                    </svg>
-                    Download JSON
-                `;
-            } else if (msg.type === 'error') {
-                btnText.textContent = "Error occurred";
-                spinner.style.display = 'none';
-                status.style.display = 'block';
-                status.style.color = '#F24822';
-                status.textContent = msg.message;
-            }
+        function showToast(message, isError) {
+            toast.textContent = message;
+            toast.className = 'toast visible' + (isError ? ' error' : '');
+            setTimeout(() => { toast.className = 'toast'; }, 4000);
+        }
+
+        function showLoading(text) {
+            loadingText.textContent = text;
+            actions.classList.add('hidden');
+            loading.classList.add('visible');
+            downloadState.classList.remove('visible');
+            downloadState.style.position = 'absolute';
+        }
+
+        function showDownload() {
+            loading.classList.remove('visible');
+            loading.style.position = 'absolute';
+            downloadState.classList.add('visible');
+        }
+
+        // Button handlers — send mode to plugin
+        btnFull.onclick = () => {
+            showLoading('Extracting Full UI Structure...');
+            parent.postMessage({ pluginMessage: { type: 'run-extraction', mode: 'full' } }, '*');
         };
 
-        btn.onclick = () => {
+        btnTokens.onclick = () => {
+            showLoading('Syncing Design Tokens...');
+            parent.postMessage({ pluginMessage: { type: 'run-extraction', mode: 'tokens' } }, '*');
+        };
+
+        // Download handler
+        btnDownload.onclick = () => {
             if (!extractedData) return;
 
-            // Trigger download
             const dataStr = JSON.stringify(extractedData, null, 2);
-            const blob = new Blob([dataStr], { type: "application/json" });
+            const blob = new Blob([dataStr], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
-            
-            const a = document.createElement("a");
+
+            const a = document.createElement('a');
             a.href = url;
-            a.download = "figma-export.json";
+            a.download = 'figma-export.json';
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
 
-            status.style.display = 'block';
-            status.style.color = '#18A0FB';
-            status.textContent = "Downloaded successfully!";
-            
-            // Wait a moment before closing to show success message
+            showToast('Downloaded successfully!', false);
+
             setTimeout(() => {
                 parent.postMessage({ pluginMessage: { type: 'close' } }, '*');
             }, 1500);
+        };
+
+        // Listen for messages from the plugin
+        window.onmessage = (event) => {
+            const msg = event.data.pluginMessage;
+            if (!msg) return;
+
+            if (msg.type === 'export-data') {
+                extractedData = msg.payload;
+                showDownload();
+            } else if (msg.type === 'error') {
+                // Return to action buttons on error
+                loading.classList.remove('visible');
+                loading.style.position = 'absolute';
+                actions.classList.remove('hidden');
+                showToast(msg.message || 'An error occurred.', true);
+            }
         };
     </script>
 </body>
