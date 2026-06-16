@@ -71,6 +71,103 @@ const runPlugin = async function () {
         // ===== GLOBAL DEEP EXTRACTION HELPERS =====
         // These helpers are used by multiple SMART_WIDGET handlers.
 
+        // Helper: Map Figma font style names to CSS numeric weights
+        const mapFigmaWeightToNumber = function (styleName) {
+            if (!styleName) return 400;
+            const s = styleName.replace(/[\s-_]/g, '').toLowerCase();
+            const weightMap = {
+                'thin': 100,
+                'hairline': 100,
+                'extralight': 200,
+                'ultralight': 200,
+                'light': 300,
+                'regular': 400,
+                'normal': 400,
+                'medium': 500,
+                'semibold': 600,
+                'demibold': 600,
+                'bold': 700,
+                'extrabold': 800,
+                'ultrabold': 800,
+                'black': 900,
+                'heavy': 900,
+            };
+            // Strip italic suffix for matching
+            const cleaned = s.replace('italic', '').trim();
+            if (cleaned === '' || cleaned === 'italic') return 400;
+            if (weightMap[cleaned] !== undefined) return weightMap[cleaned];
+            // Fallback: try partial matching
+            for (const key in weightMap) {
+                if (cleaned.indexOf(key) !== -1) return weightMap[key];
+            }
+            return 400;
+        };
+
+        // Helper: Extract typography object from a TEXT node
+        const extractTypography = async function (textNode) {
+            if (!textNode || textNode.type !== 'TEXT') return null;
+            const typo = {};
+
+            // Font Family
+            if (textNode.fontName && textNode.fontName !== figma.mixed) {
+                typo.fontFamily = textNode.fontName.family;
+                typo.fontWeight = mapFigmaWeightToNumber(textNode.fontName.style);
+            } else {
+                // Mixed fonts — take first segment
+                typo.fontFamily = 'Inter';
+                typo.fontWeight = 400;
+            }
+
+            // Font Size (raw value)
+            if (textNode.fontSize !== undefined && textNode.fontSize !== figma.mixed) {
+                typo.fontSize = textNode.fontSize;
+            }
+            // Font Size (bound variable / token)
+            if (textNode.boundVariables && textNode.boundVariables['fontSize']) {
+                const fsToken = await getVarName(textNode.boundVariables['fontSize'].id);
+                if (fsToken) typo.fontSizeToken = fsToken;
+            }
+
+            // Line Height
+            if (textNode.lineHeight && textNode.lineHeight !== figma.mixed) {
+                const lh = textNode.lineHeight;
+                if (lh.unit === 'PIXELS') {
+                    typo.lineHeight = lh.value;
+                    typo.lineHeightUnit = 'px';
+                } else if (lh.unit === 'PERCENT') {
+                    typo.lineHeight = lh.value;
+                    typo.lineHeightUnit = '%';
+                }
+                // AUTO → omit (browser default)
+            }
+            // Line Height (bound variable / token)
+            if (textNode.boundVariables && textNode.boundVariables['lineHeight']) {
+                const lhToken = await getVarName(textNode.boundVariables['lineHeight'].id);
+                if (lhToken) typo.lineHeightToken = lhToken;
+            }
+
+            // Letter Spacing
+            if (textNode.letterSpacing && textNode.letterSpacing !== figma.mixed) {
+                const ls = textNode.letterSpacing;
+                if (ls.unit === 'PIXELS') {
+                    typo.letterSpacing = ls.value;
+                    typo.letterSpacingUnit = 'px';
+                } else if (ls.unit === 'PERCENT') {
+                    // Figma PERCENT letter-spacing: convert to em
+                    // Figma uses % of font size, CSS em is also relative to font size
+                    typo.letterSpacing = parseFloat((ls.value / 100).toFixed(3));
+                    typo.letterSpacingUnit = 'em';
+                }
+            }
+            // Letter Spacing (bound variable / token)
+            if (textNode.boundVariables && textNode.boundVariables['letterSpacing']) {
+                const lsToken = await getVarName(textNode.boundVariables['letterSpacing'].id);
+                if (lsToken) typo.letterSpacingToken = lsToken;
+            }
+
+            return typo;
+        };
+
         // Deep Text Extraction (recursive)
         // M3 components nest text deep: Frame > State Layer > Label Text
         // We recursively find the FIRST Text node at any depth.
@@ -306,6 +403,12 @@ const runPlugin = async function () {
                     if (textColorToken) {
                         nodeData.tokens.textColor = textColorToken;
                     }
+
+                    // Typography extraction for button text
+                    const btnTypo = await extractTypography(textNode);
+                    if (btnTypo) {
+                        nodeData.typography = btnTypo;
+                    }
                 }
 
                 // --- Deep Background Fill Extraction (using global helper) ---
@@ -412,6 +515,11 @@ const runPlugin = async function () {
                                 const btnTextColor = await extractTextColorToken(btnTextNode);
                                 if (btnTextColor) {
                                     btnData.tokens.textColor = btnTextColor;
+                                }
+                                // Typography for form submit button
+                                const formBtnTypo = await extractTypography(btnTextNode);
+                                if (formBtnTypo) {
+                                    btnData.typography = formBtnTypo;
                                 }
                             }
 
@@ -578,13 +686,37 @@ const runPlugin = async function () {
                 }
 
                 // Alert text via global deep text extraction
-                const alertTextNode = await findFirstText(node);
-                if (alertTextNode) {
-                    nodeData.settings.text = alertTextNode.characters;
-                    // Extract text color token
-                    const alertTextColor = await extractTextColorToken(alertTextNode);
-                    if (alertTextColor) {
-                        nodeData.tokens.textColor = alertTextColor;
+                // Extract up to 2 text nodes for alert title + description
+                const alertTextNodes = await findTextNodes(node, 2, null);
+                if (alertTextNodes.length > 0) {
+                    // First text = title, second text = description
+                    nodeData.settings.title = alertTextNodes[0].characters;
+                    // Extract text color token for title
+                    const alertTitleColor = await extractTextColorToken(alertTextNodes[0]);
+                    if (alertTitleColor) {
+                        nodeData.tokens.titleTextColor = alertTitleColor;
+                    }
+                    // Typography for title
+                    const titleTypo = await extractTypography(alertTextNodes[0]);
+                    if (titleTypo) {
+                        nodeData.titleTypography = titleTypo;
+                    }
+
+                    if (alertTextNodes.length > 1) {
+                        nodeData.settings.description = alertTextNodes[1].characters;
+                        const alertDescColor = await extractTextColorToken(alertTextNodes[1]);
+                        if (alertDescColor) {
+                            nodeData.tokens.descriptionTextColor = alertDescColor;
+                        }
+                        // Typography for description
+                        const descTypo = await extractTypography(alertTextNodes[1]);
+                        if (descTypo) {
+                            nodeData.descriptionTypography = descTypo;
+                        }
+                    } else {
+                        // Single text node — treat as description (Elementor alert default)
+                        nodeData.settings.text = alertTextNodes[0].characters;
+                        nodeData.tokens.textColor = alertTitleColor;
                     }
                 }
 
@@ -615,6 +747,21 @@ const runPlugin = async function () {
                 return nodeData;
             }
 
+
+            // --- TEXT node: inject typography ---
+            if (node.type === 'TEXT') {
+                nodeData.rawValues.text = node.characters;
+                // Text color
+                const textFillToken = await extractTextColorToken(node);
+                if (textFillToken) {
+                    nodeData.tokens.textColor = textFillToken;
+                }
+                // Typography
+                const textTypo = await extractTypography(node);
+                if (textTypo) {
+                    nodeData.typography = textTypo;
+                }
+            }
 
 
             if ("children" in node && node.children.length > 0) {

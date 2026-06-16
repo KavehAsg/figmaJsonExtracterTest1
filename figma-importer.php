@@ -116,6 +116,66 @@ function kaveh_build_size_array($node, $figma_key)
     return null;
 }
 
+// Helper: Build Elementor typography array from extracted typography data
+// $typo_data is the typography object from Figma (fontFamily, fontWeight, fontSize, etc.)
+// $prefix is the Elementor control prefix (e.g., 'typography', 'title_typography', 'description_typography')
+function kaveh_build_typography_array($typo_data, $prefix = 'typography')
+{
+    if (empty($typo_data)) return [];
+    $result = [];
+
+    // CRITICAL: Elementor requires this flag to enable custom typography override
+    $result[$prefix . '_typography'] = 'custom';
+
+    // Font Family
+    if (!empty($typo_data['fontFamily'])) {
+        $result[$prefix . '_font_family'] = $typo_data['fontFamily'];
+    }
+
+    // Font Weight
+    if (!empty($typo_data['fontWeight'])) {
+        $result[$prefix . '_font_weight'] = strval($typo_data['fontWeight']);
+    }
+
+    // Font Size (token or raw)
+    if (!empty($typo_data['fontSizeToken'])) {
+        $token_name = str_replace([' ', '/'], '-', strtolower($typo_data['fontSizeToken']));
+        $result[$prefix . '_font_size'] = ['size' => 'var(--' . $token_name . ')', 'unit' => 'custom'];
+    } elseif (isset($typo_data['fontSize'])) {
+        $result[$prefix . '_font_size'] = ['size' => intval($typo_data['fontSize']), 'unit' => 'px'];
+    }
+
+    // Line Height (token or raw)
+    if (!empty($typo_data['lineHeightToken'])) {
+        $token_name = str_replace([' ', '/'], '-', strtolower($typo_data['lineHeightToken']));
+        $result[$prefix . '_line_height'] = ['size' => 'var(--' . $token_name . ')', 'unit' => 'custom'];
+    } elseif (isset($typo_data['lineHeight'])) {
+        $unit = 'px';
+        if (!empty($typo_data['lineHeightUnit'])) {
+            $u = $typo_data['lineHeightUnit'];
+            if ($u === '%') $unit = 'em';
+            else $unit = $u;
+        }
+        $lh_value = $typo_data['lineHeight'];
+        // Convert Figma percentage to em for Elementor
+        if (!empty($typo_data['lineHeightUnit']) && $typo_data['lineHeightUnit'] === '%') {
+            $lh_value = round($lh_value / 100, 2);
+        }
+        $result[$prefix . '_line_height'] = ['size' => $lh_value, 'unit' => $unit];
+    }
+
+    // Letter Spacing (token or raw)
+    if (!empty($typo_data['letterSpacingToken'])) {
+        $token_name = str_replace([' ', '/'], '-', strtolower($typo_data['letterSpacingToken']));
+        $result[$prefix . '_letter_spacing'] = ['size' => 'var(--' . $token_name . ')', 'unit' => 'custom'];
+    } elseif (isset($typo_data['letterSpacing'])) {
+        $ls_unit = !empty($typo_data['letterSpacingUnit']) ? $typo_data['letterSpacingUnit'] : 'px';
+        $result[$prefix . '_letter_spacing'] = ['size' => $typo_data['letterSpacing'], 'unit' => $ls_unit];
+    }
+
+    return $result;
+}
+
 // ۳. موتور ترجمه پیشرفته با ابعاد و استایل
 function convert_figma_node($node)
 {
@@ -412,6 +472,12 @@ function convert_figma_node($node)
                 }
             }
 
+            // Typography for button text
+            $btn_typo = kaveh_build_typography_array($node['typography'] ?? null, 'typography');
+            if (!empty($btn_typo)) {
+                $btn_settings = array_merge($btn_settings, $btn_typo);
+            }
+
             return [
                 'id' => $el_id,
                 'elType' => 'widget',
@@ -633,8 +699,8 @@ function convert_figma_node($node)
         if ($node['widgetType'] === 'alert') {
             $alert_settings = [
                 'alert_type' => 'info',
-                'alert_title' => '',
-                'alert_description' => $node['settings']['text'] ?? 'Alert message',
+                'alert_title' => $node['settings']['title'] ?? '',
+                'alert_description' => $node['settings']['description'] ?? ($node['settings']['text'] ?? 'Alert message'),
             ];
 
             // Show dismiss button
@@ -650,10 +716,32 @@ function convert_figma_node($node)
                 $alert_settings['background'] = 'var(--' . $bg_token . ')';
             }
 
-            // Text color from textColor token
-            if (!empty($node['tokens']['textColor'])) {
+            // Title text color
+            if (!empty($node['tokens']['titleTextColor'])) {
+                $tc_token = str_replace([' ', '/'], '-', strtolower($node['tokens']['titleTextColor']));
+                $alert_settings['title_color'] = 'var(--' . $tc_token . ')';
+            }
+            // Description text color
+            if (!empty($node['tokens']['descriptionTextColor'])) {
+                $dc_token = str_replace([' ', '/'], '-', strtolower($node['tokens']['descriptionTextColor']));
+                $alert_settings['description_color'] = 'var(--' . $dc_token . ')';
+            }
+            // Legacy single text color fallback
+            if (!empty($node['tokens']['textColor']) && empty($alert_settings['title_color'])) {
                 $tc_token = str_replace([' ', '/'], '-', strtolower($node['tokens']['textColor']));
                 $alert_settings['text_color'] = 'var(--' . $tc_token . ')';
+            }
+
+            // Title typography
+            $title_typo = kaveh_build_typography_array($node['titleTypography'] ?? null, 'title_typography');
+            if (!empty($title_typo)) {
+                $alert_settings = array_merge($alert_settings, $title_typo);
+            }
+
+            // Description typography
+            $desc_typo = kaveh_build_typography_array($node['descriptionTypography'] ?? null, 'description_typography');
+            if (!empty($desc_typo)) {
+                $alert_settings = array_merge($alert_settings, $desc_typo);
             }
 
             // Border radius
@@ -745,7 +833,21 @@ function convert_figma_node($node)
 
     // ج: متن
     if ($node['type'] === 'TEXT') {
-        return ['id' => $el_id, 'elType' => 'widget', 'widgetType' => 'heading', 'settings' => ['title' => $node['name'] ?? 'Text'], 'elements' => []];
+        $heading_settings = ['title' => $node['rawValues']['text'] ?? ($node['name'] ?? 'Text')];
+
+        // Text color
+        if (!empty($node['tokens']['textColor'])) {
+            $tc_token = str_replace([' ', '/'], '-', strtolower($node['tokens']['textColor']));
+            $heading_settings['title_color'] = 'var(--' . $tc_token . ')';
+        }
+
+        // Typography
+        $heading_typo = kaveh_build_typography_array($node['typography'] ?? null, 'typography');
+        if (!empty($heading_typo)) {
+            $heading_settings = array_merge($heading_settings, $heading_typo);
+        }
+
+        return ['id' => $el_id, 'elType' => 'widget', 'widgetType' => 'heading', 'settings' => $heading_settings, 'elements' => []];
     }
     return null;
 }
