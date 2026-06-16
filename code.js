@@ -68,6 +68,56 @@ const runPlugin = async function () {
             }
         }
 
+        // ===== GLOBAL TEXT STYLES EXTRACTION =====
+        const textStyles = await figma.getLocalTextStylesAsync();
+        const globalTypographyData = [];
+        for (const style of textStyles) {
+            const typoEntry = {
+                name: style.name,
+                fontFamily: style.fontName ? style.fontName.family : 'Inter',
+                fontSize: style.fontSize || 16,
+            };
+            // fontWeight and fontStyle will be set after mapFigmaWeightToNumber is defined
+            typoEntry._rawStyleName = style.fontName ? style.fontName.style : null;
+
+            // Line Height
+            if (style.lineHeight) {
+                if (style.lineHeight.unit === 'PIXELS') {
+                    typoEntry.lineHeight = style.lineHeight.value;
+                    typoEntry.lineHeightUnit = 'px';
+                } else if (style.lineHeight.unit === 'PERCENT') {
+                    typoEntry.lineHeight = style.lineHeight.value;
+                    typoEntry.lineHeightUnit = '%';
+                }
+            }
+
+            // Letter Spacing
+            if (style.letterSpacing) {
+                if (style.letterSpacing.unit === 'PIXELS') {
+                    typoEntry.letterSpacing = style.letterSpacing.value;
+                    typoEntry.letterSpacingUnit = 'px';
+                } else if (style.letterSpacing.unit === 'PERCENT') {
+                    typoEntry.letterSpacing = parseFloat((style.letterSpacing.value / 100).toFixed(3));
+                    typoEntry.letterSpacingUnit = 'em';
+                }
+            }
+
+            // Text Transform
+            if (style.textCase) {
+                if (style.textCase === 'UPPER') typoEntry.textTransform = 'uppercase';
+                else if (style.textCase === 'LOWER') typoEntry.textTransform = 'lowercase';
+                else if (style.textCase === 'TITLE') typoEntry.textTransform = 'capitalize';
+            }
+
+            // Text Decoration
+            if (style.textDecoration) {
+                if (style.textDecoration === 'UNDERLINE') typoEntry.textDecoration = 'underline';
+                else if (style.textDecoration === 'STRIKETHROUGH') typoEntry.textDecoration = 'line-through';
+            }
+
+            globalTypographyData.push(typoEntry);
+        }
+
         // ===== GLOBAL DEEP EXTRACTION HELPERS =====
         // These helpers are used by multiple SMART_WIDGET handlers.
 
@@ -103,6 +153,17 @@ const runPlugin = async function () {
             return 400;
         };
 
+        // Post-process globalTypographyData: resolve fontWeight and fontStyle
+        // (mapFigmaWeightToNumber is now defined)
+        for (let gi = 0; gi < globalTypographyData.length; gi++) {
+            const entry = globalTypographyData[gi];
+            entry.fontWeight = mapFigmaWeightToNumber(entry._rawStyleName);
+            if (entry._rawStyleName && entry._rawStyleName.toLowerCase().indexOf('italic') !== -1) {
+                entry.fontStyle = 'italic';
+            }
+            delete entry._rawStyleName;
+        }
+
         // Helper: Extract typography object from a TEXT node
         const extractTypography = async function (textNode) {
             if (!textNode || textNode.type !== 'TEXT') return null;
@@ -112,6 +173,10 @@ const runPlugin = async function () {
             if (textNode.fontName && textNode.fontName !== figma.mixed) {
                 typo.fontFamily = textNode.fontName.family;
                 typo.fontWeight = mapFigmaWeightToNumber(textNode.fontName.style);
+                // Font Style (Italic detection)
+                if (textNode.fontName.style && textNode.fontName.style.toLowerCase().indexOf('italic') !== -1) {
+                    typo.fontStyle = 'italic';
+                }
             } else {
                 // Mixed fonts — take first segment
                 typo.fontFamily = 'Inter';
@@ -163,6 +228,19 @@ const runPlugin = async function () {
             if (textNode.boundVariables && textNode.boundVariables['letterSpacing']) {
                 const lsToken = await getVarName(textNode.boundVariables['letterSpacing'].id);
                 if (lsToken) typo.letterSpacingToken = lsToken;
+            }
+
+            // Text Transform (from textCase)
+            if (textNode.textCase && textNode.textCase !== figma.mixed) {
+                if (textNode.textCase === 'UPPER') typo.textTransform = 'uppercase';
+                else if (textNode.textCase === 'LOWER') typo.textTransform = 'lowercase';
+                else if (textNode.textCase === 'TITLE') typo.textTransform = 'capitalize';
+            }
+
+            // Text Decoration
+            if (textNode.textDecoration && textNode.textDecoration !== figma.mixed) {
+                if (textNode.textDecoration === 'UNDERLINE') typo.textDecoration = 'underline';
+                else if (textNode.textDecoration === 'STRIKETHROUGH') typo.textDecoration = 'line-through';
             }
 
             return typo;
@@ -775,7 +853,7 @@ const runPlugin = async function () {
             structureResult = await traverseNode(figma.currentPage.selection[0]);
         }
 
-        const finalOutput = { designTokens: globalTokens, structure: structureResult };
+        const finalOutput = { designTokens: globalTokens, globalTypography: globalTypographyData, structure: structureResult };
         figma.ui.postMessage({ type: 'export-data', payload: finalOutput });
 
     } catch (error) {

@@ -61,6 +61,53 @@ function kaveh_inject_tokens_to_global_kit($tokens)
     return true;
 }
 
+// Helper: Inject Figma Global Text Styles into Elementor Active Kit (custom_typography)
+function kaveh_inject_fonts_to_global_kit($global_typography)
+{
+    if (empty($global_typography) || !is_array($global_typography))
+        return false;
+
+    $kit_id = get_option('elementor_active_kit');
+    if (!$kit_id)
+        return false;
+
+    $kit_settings = get_post_meta($kit_id, '_elementor_page_settings', true) ?: [];
+    if (!isset($kit_settings['custom_typography']))
+        $kit_settings['custom_typography'] = [];
+
+    // Build a lookup of existing titles for deduplication
+    $existing_titles = [];
+    foreach ($kit_settings['custom_typography'] as $idx => $existing_font) {
+        if (!empty($existing_font['title'])) {
+            $existing_titles[$existing_font['title']] = $idx;
+        }
+    }
+
+    foreach ($global_typography as $font) {
+        if (empty($font['name'])) continue;
+
+        $id = substr(md5($font['name']), 0, 7);
+        $typo_settings = kaveh_build_typography_array($font, 'typography');
+        $new_global_font = array_merge(
+            ['_id' => $id, 'title' => $font['name']],
+            $typo_settings
+        );
+
+        if (isset($existing_titles[$font['name']])) {
+            // Update existing entry
+            $kit_settings['custom_typography'][$existing_titles[$font['name']]] = $new_global_font;
+        } else {
+            // Add new entry
+            $kit_settings['custom_typography'][] = $new_global_font;
+        }
+    }
+
+    update_post_meta($kit_id, '_elementor_page_settings', $kit_settings);
+    if (class_exists('\Elementor\Plugin'))
+        \Elementor\Plugin::$instance->files_manager->clear_cache();
+    return true;
+}
+
 // Helper: Build Elementor dimensions array with strict token/px rules
 function kaveh_build_dimensions_array($node, $figma_map)
 {
@@ -171,6 +218,21 @@ function kaveh_build_typography_array($typo_data, $prefix = 'typography')
     } elseif (isset($typo_data['letterSpacing'])) {
         $ls_unit = !empty($typo_data['letterSpacingUnit']) ? $typo_data['letterSpacingUnit'] : 'px';
         $result[$prefix . '_letter_spacing'] = ['size' => $typo_data['letterSpacing'], 'unit' => $ls_unit];
+    }
+
+    // Font Style (italic)
+    if (!empty($typo_data['fontStyle'])) {
+        $result[$prefix . '_font_style'] = $typo_data['fontStyle'];
+    }
+
+    // Text Transform (uppercase, lowercase, capitalize)
+    if (!empty($typo_data['textTransform'])) {
+        $result[$prefix . '_text_transform'] = $typo_data['textTransform'];
+    }
+
+    // Text Decoration (underline, line-through)
+    if (!empty($typo_data['textDecoration'])) {
+        $result[$prefix . '_text_decoration'] = $typo_data['textDecoration'];
     }
 
     return $result;
@@ -859,6 +921,13 @@ function create_elementor_template($payload)
     $structure = $payload['structure'] ?? null;
 
     $tokens_ok = !empty($tokens) ? kaveh_inject_tokens_to_global_kit($tokens) : false;
+
+    // Inject global typography styles into Elementor Site Settings
+    $global_typo = $payload['globalTypography'] ?? [];
+    if (!empty($global_typo)) {
+        kaveh_inject_fonts_to_global_kit($global_typo);
+    }
+
     if (!$structure)
         return $tokens_ok ? 'only_tokens' : false;
 
