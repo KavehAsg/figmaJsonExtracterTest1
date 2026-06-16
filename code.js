@@ -18,9 +18,9 @@ function rgbaToCss(value) {
     }
 }
 
-const runPlugin = async function () {
+const runPlugin = async function (mode = 'full') {
     console.clear();
-    console.log("⏳ ترمه در حال استخراج دکمه‌ها، ابعاد و متغیرها...");
+    console.log("[Figma2Elementor] Extraction process initiated. Mode: " + mode);
 
     try {
         const globalTokens = {};
@@ -38,7 +38,10 @@ const runPlugin = async function () {
             return null;
         };
 
-        // استخراج استایل‌ها و متغیرها
+        /**
+         * Extract Local Paint Styles and Variables
+         * Resolves solid colors and float values to CSS-compatible tokens.
+         */
         const paintStyles = await figma.getLocalPaintStylesAsync();
         for (const style of paintStyles) {
             if (style.paints && style.paints.length > 0 && style.paints[0].type === 'SOLID') {
@@ -119,7 +122,14 @@ const runPlugin = async function () {
         }
 
         // ===== GLOBAL DEEP EXTRACTION HELPERS =====
-        // These helpers are used by multiple SMART_WIDGET handlers.
+        
+        /**
+         * Map Figma font style names to CSS numeric weights.
+         * Falls back to 400 if no match is found.
+         *
+         * @param {string} styleName - The raw style name from Figma.
+         * @returns {number} The corresponding CSS font weight.
+         */
 
         // Helper: Map Figma font style names to CSS numeric weights
         const mapFigmaWeightToNumber = function (styleName) {
@@ -164,7 +174,13 @@ const runPlugin = async function () {
             delete entry._rawStyleName;
         }
 
-        // Helper: Extract typography object from a TEXT node
+        /**
+         * Extract a complete typography object from a TEXT node.
+         * Resolves variables for font size, line height, and letter spacing.
+         *
+         * @param {SceneNode} textNode - The Figma TEXT node.
+         * @returns {Promise<Object|null>} The structured typography object.
+         */
         const extractTypography = async function (textNode) {
             if (!textNode || textNode.type !== 'TEXT') return null;
             const typo = {};
@@ -246,9 +262,13 @@ const runPlugin = async function () {
             return typo;
         };
 
-        // Deep Text Extraction (recursive)
-        // M3 components nest text deep: Frame > State Layer > Label Text
-        // We recursively find the FIRST Text node at any depth.
+        /**
+         * Recursive Deep Text Extraction
+         * M3 components nest text deeply. This recursively finds the FIRST Text node.
+         *
+         * @param {SceneNode} node - The root node to begin searching from.
+         * @returns {SceneNode|null} The found TEXT node, or null.
+         */
         const findFirstText = async function (n) {
             if (n.type === 'TEXT') return n;
             if ('children' in n && n.children.length > 0) {
@@ -260,8 +280,14 @@ const runPlugin = async function () {
             return null;
         };
 
-        // Find first N text nodes (recursive)
-        // Returns an array of up to `maxCount` TEXT nodes found depth-first.
+        /**
+         * Find the first N text nodes (recursive).
+         * Used for finding both Title and Description texts in Alert widgets.
+         *
+         * @param {SceneNode} node - The root node.
+         * @param {number} maxCount - The maximum number of text nodes to find.
+         * @returns {Array<SceneNode>} An array of found TEXT nodes.
+         */
         const findTextNodes = async function (n, maxCount, results) {
             if (!results) results = [];
             if (results.length >= maxCount) return results;
@@ -278,9 +304,13 @@ const runPlugin = async function () {
             return results;
         };
 
-        // Deep Background Fill Extraction
-        // Checks node and immediate children for fill tokens/styles.
-        // Returns the resolved fill token name, or null.
+        /**
+         * Deep Background Fill Extraction
+         * Checks the node and its immediate children for fill tokens/styles.
+         *
+         * @param {SceneNode} node - The node to inspect.
+         * @returns {string|null} The resolved fill token name, or null.
+         */
         const extractDeepBackground = async function (node) {
             // 1. Check main node for boundVariables['fills']
             if (node.boundVariables && node.boundVariables['fills']
@@ -318,9 +348,13 @@ const runPlugin = async function () {
             return null;
         };
 
-        // Deep Icon Detection (recursive)
-        // M3 components may have leading/trailing icons as VECTOR nodes
-        // or small icon-wrapper Frames. We deep-scan to find them.
+        /**
+         * Deep Icon Detection (recursive)
+         * Deep-scans for VECTOR nodes, BOOLEAN_OPERATION nodes, or frames named 'icon'.
+         *
+         * @param {SceneNode} node - The root node to inspect.
+         * @returns {Object|null} The extracted icon details (color, node reference).
+         */
         const findIconAndText = async function (n, results) {
             if (!results) results = { icons: [], textIndex: -1, flatIndex: 0 };
             if (n.type === 'TEXT') {
@@ -382,7 +416,12 @@ const runPlugin = async function () {
             return results;
         };
 
-        // Helper: Extract text color token from a TEXT node
+        /**
+         * Extract text color token from a TEXT node.
+         *
+         * @param {SceneNode} textNode - The Figma TEXT node.
+         * @returns {Promise<string|null>} The resolved color token, or null.
+         */
         const extractTextColorToken = async function (textNode) {
             if (textNode.boundVariables && textNode.boundVariables['fills']
                 && Array.isArray(textNode.boundVariables['fills'])
@@ -397,7 +436,13 @@ const runPlugin = async function () {
             return null;
         };
 
-        // موتور پیمایش
+        /**
+         * Deep Traversal Engine
+         * Evaluates standard nodes, checks SMART_WIDGET rules, and builds the UI tree.
+         *
+         * @param {SceneNode} node - The root Figma node.
+         * @returns {Promise<Object>} The standard structured node data block.
+         */
         let structureResult = null;
         const traverseNode = async function (node) {
             const nodeData = {
@@ -849,23 +894,29 @@ const runPlugin = async function () {
             return nodeData;
         };
 
-        if (figma.currentPage.selection.length > 0) {
+        // Structure traversal — only in 'full' mode
+        if (mode === 'full' && figma.currentPage.selection.length > 0) {
             structureResult = await traverseNode(figma.currentPage.selection[0]);
+        } else if (mode === 'full') {
+            console.warn("[Figma2Elementor] No selection found for full UI extraction. Only tokens will be synced.");
         }
 
         const finalOutput = { designTokens: globalTokens, globalTypography: globalTypographyData, structure: structureResult };
+        console.log("[Figma2Elementor] Extraction complete. Sending payload to UI.");
         figma.ui.postMessage({ type: 'export-data', payload: finalOutput });
 
     } catch (error) {
-        console.error("❌ ERROR:", error);
-        figma.ui.postMessage({ type: 'error', message: String(error) });
+        console.error("[Figma2Elementor] Error during extraction:", error);
+        figma.ui.postMessage({ type: 'error', message: "Extraction failed: " + String(error) });
     }
 };
 
-figma.showUI(__html__, { width: 500, height: 600 });
+figma.showUI(__html__, { width: 360, height: 420 });
 figma.ui.onmessage = msg => {
     if (msg.type === 'close') {
         figma.closePlugin();
+    } else if (msg.type === 'run-extraction') {
+        const mode = msg.mode || 'full';
+        runPlugin(mode);
     }
 };
-runPlugin();

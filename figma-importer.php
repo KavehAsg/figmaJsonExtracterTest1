@@ -10,15 +10,22 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-// ۱. اضافه کردن منو
-function kaveh_figma_menu()
+/**
+ * Register the Figma Importer admin menu page.
+ */
+function f2e_figma_menu()
 {
-    add_menu_page('Figma Importer', 'Figma Importer', 'manage_options', 'figma-importer-page', 'kaveh_render_admin_page', 'dashicons-art', 100);
+    add_menu_page('Figma Importer', 'Figma Importer', 'manage_options', 'figma-importer-page', 'f2e_render_admin_page', 'dashicons-art', 100);
 }
-add_action('admin_menu', 'kaveh_figma_menu');
+add_action('admin_menu', 'f2e_figma_menu');
 
-// ۲. تزریق توکن‌ها (بدون تغییر و پایدار)
-function kaveh_inject_tokens_to_global_kit($tokens)
+/**
+ * Inject Figma design tokens (colors & variables) into Elementor's Global Kit.
+ * 
+ * @param array  Key-value pairs of design tokens.
+ * @return bool True on success, false on failure.
+ */
+function f2e_inject_tokens_to_global_kit($tokens)
 {
     if (empty($tokens))
         return false;
@@ -61,8 +68,13 @@ function kaveh_inject_tokens_to_global_kit($tokens)
     return true;
 }
 
-// Helper: Inject Figma Global Text Styles into Elementor Active Kit (custom_typography)
-function kaveh_inject_fonts_to_global_kit($global_typography)
+/**
+ * Inject Figma Global Text Styles into Elementor Active Kit (custom_typography).
+ * 
+ * @param array  Array of typography styles from Figma.
+ * @return bool True on success, false on failure.
+ */
+function f2e_inject_fonts_to_global_kit($global_typography)
 {
     if (empty($global_typography) || !is_array($global_typography))
         return false;
@@ -87,7 +99,7 @@ function kaveh_inject_fonts_to_global_kit($global_typography)
         if (empty($font['name'])) continue;
 
         $id = substr(md5($font['name']), 0, 7);
-        $typo_settings = kaveh_build_typography_array($font, 'typography');
+        $typo_settings = f2e_build_typography_array($font, 'typography');
         $new_global_font = array_merge(
             ['_id' => $id, 'title' => $font['name']],
             $typo_settings
@@ -108,8 +120,14 @@ function kaveh_inject_fonts_to_global_kit($global_typography)
     return true;
 }
 
-// Helper: Build Elementor dimensions array with strict token/px rules
-function kaveh_build_dimensions_array($node, $figma_map)
+/**
+ * Build an Elementor dimensions array ensuring strict token or pixel rules.
+ * 
+ * @param array  Node data containing tokens and rawValues.
+ * @param array  Mapping of Figma keys to Elementor keys.
+ * @return array|null Dimension array for Elementor or null if empty.
+ */
+function f2e_build_dimensions_array($node, $figma_map)
 {
     $has_token = false;
     $sides = [];
@@ -141,8 +159,14 @@ function kaveh_build_dimensions_array($node, $figma_map)
     }
 }
 
-// Helper: Resolve a token name to a CSS variable string
-function kaveh_resolve_token($node, $token_key)
+/**
+ * Resolve a design token to its corresponding CSS variable string.
+ * 
+ * @param array  Node data.
+ * @param string  The token key to resolve.
+ * @return string|null CSS variable string or null if not found.
+ */
+function f2e_resolve_token($node, $token_key)
 {
     if (!empty($node['tokens'][$token_key])) {
         $token_name = str_replace([' ', '/'], '-', strtolower($node['tokens'][$token_key]));
@@ -151,8 +175,14 @@ function kaveh_resolve_token($node, $token_key)
     return null;
 }
 
-// Helper: Build Elementor size array from token or raw value
-function kaveh_build_size_array($node, $figma_key)
+/**
+ * Build an Elementor size array from a token or raw value.
+ * 
+ * @param array  Node data.
+ * @param string  The figma key to extract size for.
+ * @return array|null Size array with value and unit.
+ */
+function f2e_build_size_array($node, $figma_key)
 {
     if (!empty($node['tokens'][$figma_key])) {
         $token_name = str_replace([' ', '/'], '-', strtolower($node['tokens'][$figma_key]));
@@ -166,7 +196,7 @@ function kaveh_build_size_array($node, $figma_key)
 // Helper: Build Elementor typography array from extracted typography data
 // $typo_data is the typography object from Figma (fontFamily, fontWeight, fontSize, etc.)
 // $prefix is the Elementor control prefix (e.g., 'typography', 'title_typography', 'description_typography')
-function kaveh_build_typography_array($typo_data, $prefix = 'typography')
+function f2e_build_typography_array($typo_data, $prefix = 'typography')
 {
     if (empty($typo_data)) return [];
     $result = [];
@@ -535,7 +565,7 @@ function convert_figma_node($node)
             }
 
             // Typography for button text
-            $btn_typo = kaveh_build_typography_array($node['typography'] ?? null, 'typography');
+            $btn_typo = f2e_build_typography_array($node['typography'] ?? null, 'typography');
             if (!empty($btn_typo)) {
                 $btn_settings = array_merge($btn_settings, $btn_typo);
             }
@@ -600,7 +630,7 @@ function convert_figma_node($node)
                 }
 
                 // Field border radius
-                $radius = kaveh_build_dimensions_array($first_field, [
+                $radius = f2e_build_dimensions_array($first_field, [
                     'topLeftRadius' => 'top',
                     'topRightRadius' => 'right',
                     'bottomRightRadius' => 'bottom',
@@ -631,7 +661,7 @@ function convert_figma_node($node)
                 }
 
                 // Button border radius
-                $btn_radius = kaveh_build_dimensions_array($submit, [
+                $btn_radius = f2e_build_dimensions_array($submit, [
                     'topLeftRadius' => 'top',
                     'topRightRadius' => 'right',
                     'bottomRightRadius' => 'bottom',
@@ -659,14 +689,14 @@ function convert_figma_node($node)
             ];
 
             // Width
-            $width_arr = kaveh_build_size_array($node, 'width');
+            $width_arr = f2e_build_size_array($node, 'width');
             if ($width_arr) {
                 $img_settings['image_custom_dimension'] = ['width' => $width_arr['size'], 'height' => ''];
                 $img_settings['image_size'] = 'custom';
             }
 
             // Border radius
-            $radius = kaveh_build_dimensions_array($node, [
+            $radius = f2e_build_dimensions_array($node, [
                 'topLeftRadius' => 'top',
                 'topRightRadius' => 'right',
                 'bottomRightRadius' => 'bottom',
@@ -692,7 +722,7 @@ function convert_figma_node($node)
             ];
 
             // Color
-            $color = kaveh_resolve_token($node, 'fill');
+            $color = f2e_resolve_token($node, 'fill');
             if ($color) {
                 $div_settings['color'] = $color;
             } elseif (!empty($node['rawValues']['color'])) {
@@ -727,13 +757,13 @@ function convert_figma_node($node)
             ];
 
             // Icon color (from fill token)
-            $fill_color = kaveh_resolve_token($node, 'fill');
+            $fill_color = f2e_resolve_token($node, 'fill');
             if ($fill_color) {
                 $icon_settings['primary_color'] = $fill_color;
             }
 
             // Stroke color
-            $stroke_color = kaveh_resolve_token($node, 'strokeColor');
+            $stroke_color = f2e_resolve_token($node, 'strokeColor');
             if ($stroke_color) {
                 $icon_settings['secondary_color'] = $stroke_color;
             } elseif (!empty($node['rawValues']['strokeColor'])) {
@@ -795,19 +825,19 @@ function convert_figma_node($node)
             }
 
             // Title typography
-            $title_typo = kaveh_build_typography_array($node['titleTypography'] ?? null, 'title_typography');
+            $title_typo = f2e_build_typography_array($node['titleTypography'] ?? null, 'title_typography');
             if (!empty($title_typo)) {
                 $alert_settings = array_merge($alert_settings, $title_typo);
             }
 
             // Description typography
-            $desc_typo = kaveh_build_typography_array($node['descriptionTypography'] ?? null, 'description_typography');
+            $desc_typo = f2e_build_typography_array($node['descriptionTypography'] ?? null, 'description_typography');
             if (!empty($desc_typo)) {
                 $alert_settings = array_merge($alert_settings, $desc_typo);
             }
 
             // Border radius
-            $radius = kaveh_build_dimensions_array($node, [
+            $radius = f2e_build_dimensions_array($node, [
                 'topLeftRadius' => 'top',
                 'topRightRadius' => 'right',
                 'bottomRightRadius' => 'bottom',
@@ -904,7 +934,7 @@ function convert_figma_node($node)
         }
 
         // Typography
-        $heading_typo = kaveh_build_typography_array($node['typography'] ?? null, 'typography');
+        $heading_typo = f2e_build_typography_array($node['typography'] ?? null, 'typography');
         if (!empty($heading_typo)) {
             $heading_settings = array_merge($heading_settings, $heading_typo);
         }
@@ -914,18 +944,23 @@ function convert_figma_node($node)
     return null;
 }
 
-// ۴. Controller
+/**
+ * Controller for creating the Elementor template from the Figma payload.
+ * 
+ * @param array  The complete JSON payload from Figma.
+ * @return int|string|bool Post ID on success, 'only_tokens' if no structure, or false on failure.
+ */
 function create_elementor_template($payload)
 {
     $tokens = $payload['designTokens'] ?? [];
     $structure = $payload['structure'] ?? null;
 
-    $tokens_ok = !empty($tokens) ? kaveh_inject_tokens_to_global_kit($tokens) : false;
+    $tokens_ok = !empty($tokens) ? f2e_inject_tokens_to_global_kit($tokens) : false;
 
     // Inject global typography styles into Elementor Site Settings
     $global_typo = $payload['globalTypography'] ?? [];
     if (!empty($global_typo)) {
-        kaveh_inject_fonts_to_global_kit($global_typo);
+        f2e_inject_fonts_to_global_kit($global_typo);
     }
 
     if (!$structure)
@@ -950,8 +985,11 @@ function create_elementor_template($payload)
     return false;
 }
 
-// ۵. UI ادمین (حل مشکل لینک!)
-function kaveh_render_admin_page()
+/**
+ * Render the WordPress Admin Page for the Figma Importer.
+ * Handles file uploads, JSON parsing, and feedback rendering.
+ */
+function f2e_render_admin_page()
 {
     $message = '';
     $json_content = '';
