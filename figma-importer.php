@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Figma to Elementor Importer
  * Description: نسخه پایدار با استخراج ابعاد، رنگ پس‌زمینه و رفع باگ UI
- * Version: 2.9.0
+ * Version: 3.0.0
  * Author: Kaveh
  */
 
@@ -141,9 +141,7 @@ function convert_figma_node($node)
             }
             return ['id' => $el_id, 'elType' => 'widget', 'widgetType' => 'nested-tabs', 'settings' => ['tabs' => $elementor_tabs_settings], 'elements' => $elementor_tabs_containers];
         }
-        if ($node['widgetType'] === 'form') {
-            return ['id' => $el_id, 'elType' => 'widget', 'widgetType' => 'form', 'settings' => ['form_name' => 'Figma Form', 'show_labels' => '', 'form_fields' => [['_id' => substr(md5(uniqid()), 0, 7), 'field_type' => 'text', 'placeholder' => $node['settings']['placeholder'] ?? '', 'width' => '100']]], 'elements' => []];
-        }
+
         if ($node['widgetType'] === 'button') {
             $btn_settings = [
                 'text' => $node['settings']['text'] ?? '',
@@ -423,52 +421,97 @@ function convert_figma_node($node)
             ];
         }
 
-        // Form Elements (Input, Textarea, Checkbox, Radio)
-        if (in_array($node['widgetType'], ['form_input', 'form_textarea', 'form_checkbox', 'form_radio'])) {
-            $field_type_map = [
-                'form_input' => 'text',
-                'form_textarea' => 'textarea',
-                'form_checkbox' => 'checkbox',
-                'form_radio' => 'radio',
-            ];
-            $field_type = $field_type_map[$node['widgetType']];
+        // Smart Form Grouping (Monolithic Elementor Form)
+        if ($node['widgetType'] === 'elementor_form') {
+            $fields = $node['settings']['fields'] ?? [];
+            $submit = $node['settings']['submit_button'] ?? null;
+
+            // Build form_fields array from collected fields
+            $elementor_fields = [];
+            foreach ($fields as $field) {
+                $elementor_fields[] = [
+                    '_id' => substr(md5(uniqid()), 0, 7),
+                    'field_type' => $field['fieldType'] ?? 'text',
+                    'placeholder' => $field['placeholder'] ?? '',
+                    'width' => '100',
+                ];
+            }
+
+            // Fallback: if no fields were found, add one empty text field
+            if (empty($elementor_fields)) {
+                $elementor_fields[] = [
+                    '_id' => substr(md5(uniqid()), 0, 7),
+                    'field_type' => 'text',
+                    'placeholder' => '',
+                    'width' => '100',
+                ];
+            }
 
             $form_settings = [
                 'form_name' => 'Figma Form',
                 'show_labels' => '',
-                'form_fields' => [
-                    [
-                        '_id' => substr(md5(uniqid()), 0, 7),
-                        'field_type' => $field_type,
-                        'placeholder' => $node['settings']['placeholder'] ?? '',
-                        'width' => '100',
-                    ]
-                ],
+                'form_fields' => $elementor_fields,
             ];
 
-            // Field background color
-            $bg_color = kaveh_resolve_token($node, 'fill');
-            if ($bg_color) {
-                $form_settings['field_background_color'] = $bg_color;
+            // Global Field Styles (from the FIRST field)
+            if (!empty($fields[0])) {
+                $first_field = $fields[0];
+
+                // Field background color
+                if (!empty($first_field['tokens']['fill'])) {
+                    $bg_token = str_replace([' ', '/'], '-', strtolower($first_field['tokens']['fill']));
+                    $form_settings['field_background_color'] = 'var(--' . $bg_token . ')';
+                }
+
+                // Field border color
+                if (!empty($first_field['tokens']['borderColor'])) {
+                    $bc_token = str_replace([' ', '/'], '-', strtolower($first_field['tokens']['borderColor']));
+                    $form_settings['field_border_color'] = 'var(--' . $bc_token . ')';
+                } elseif (!empty($first_field['rawValues']['borderColor'])) {
+                    $form_settings['field_border_color'] = $first_field['rawValues']['borderColor'];
+                }
+
+                // Field border radius
+                $radius = kaveh_build_dimensions_array($first_field, [
+                    'topLeftRadius' => 'top',
+                    'topRightRadius' => 'right',
+                    'bottomRightRadius' => 'bottom',
+                    'bottomLeftRadius' => 'left',
+                ]);
+                if ($radius) {
+                    $form_settings['field_border_radius'] = $radius;
+                }
             }
 
-            // Field border color
-            $border_color = kaveh_resolve_token($node, 'borderColor');
-            if ($border_color) {
-                $form_settings['field_border_color'] = $border_color;
-            } elseif (!empty($node['rawValues']['borderColor'])) {
-                $form_settings['field_border_color'] = $node['rawValues']['borderColor'];
-            }
+            // Submit Button Styles
+            if ($submit) {
+                // Button text
+                if (!empty($submit['text'])) {
+                    $form_settings['button_text'] = $submit['text'];
+                }
 
-            // Field border radius
-            $radius = kaveh_build_dimensions_array($node, [
-                'topLeftRadius' => 'top',
-                'topRightRadius' => 'right',
-                'bottomRightRadius' => 'bottom',
-                'bottomLeftRadius' => 'left',
-            ]);
-            if ($radius) {
-                $form_settings['field_border_radius'] = $radius;
+                // Button background color
+                if (!empty($submit['tokens']['fill'])) {
+                    $btn_bg_token = str_replace([' ', '/'], '-', strtolower($submit['tokens']['fill']));
+                    $form_settings['button_background_color'] = 'var(--' . $btn_bg_token . ')';
+                }
+
+                // Button text color
+                if (!empty($submit['tokens']['textColor'])) {
+                    $btn_tc_token = str_replace([' ', '/'], '-', strtolower($submit['tokens']['textColor']));
+                    $form_settings['button_text_color'] = 'var(--' . $btn_tc_token . ')';
+                }
+
+                // Button border radius
+                $btn_radius = kaveh_build_dimensions_array($submit, [
+                    'topLeftRadius' => 'top',
+                    'topRightRadius' => 'right',
+                    'bottomRightRadius' => 'bottom',
+                    'bottomLeftRadius' => 'left',
+                ]);
+                if ($btn_radius) {
+                    $form_settings['button_border_radius'] = $btn_radius;
+                }
             }
 
             return [
@@ -773,7 +816,7 @@ function kaveh_render_admin_page()
     }
     ?>
     <div class="wrap">
-        <h1 style="margin-bottom: 20px;">Figma Importer 2.9 🚀</h1>
+        <h1 style="margin-bottom: 20px;">Figma Importer 3.0 🚀</h1>
         <?php echo $message; ?>
         <form method="post" enctype="multipart/form-data" style="max-width: 650px; background: #fff; padding: 25px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); border: 1px solid #ccd0d4;">
             

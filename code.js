@@ -329,60 +329,118 @@ const runPlugin = async function () {
                 return nodeData;
             }
 
-            // --- Form Element Detection (1:1 Native Elementor Mapping) ---
-            // Detect form-like names: input, textarea, checkbox, radio, search, textfield
-            const formType = lowerName.includes('input') ? 'form_input'
-                : lowerName.includes('textarea') ? 'form_textarea'
-                    : lowerName.includes('checkbox') ? 'form_checkbox'
-                        : lowerName.includes('radio') ? 'form_radio'
-                            : lowerName.includes('search') ? 'form_input'
-                                : lowerName.includes('textfield') ? 'form_input' : null;
-
-            if (formType) {
+            // --- Smart Form Grouping (Form Wrapper Logic) ---
+            // Detects a parent 'form' FRAME/INSTANCE/COMPONENT and compiles
+            // all child inputs + submit button into a single monolithic form node.
+            const isForm = lowerName.includes('form') && (node.type === 'FRAME' || node.type === 'INSTANCE' || node.type === 'COMPONENT');
+            if (isForm) {
                 nodeData.type = "SMART_WIDGET";
-                nodeData.widgetType = formType;
-                nodeData.settings = {};
+                nodeData.widgetType = "elementor_form";
+                nodeData.settings = { fields: [], submit_button: null };
 
-                // Border radius (4 corners)
-                if ("topLeftRadius" in node) {
-                    nodeData.rawValues.topLeftRadius = node.topLeftRadius;
-                    nodeData.rawValues.topRightRadius = node.topRightRadius;
-                    nodeData.rawValues.bottomRightRadius = node.bottomRightRadius;
-                    nodeData.rawValues.bottomLeftRadius = node.bottomLeftRadius;
-                }
+                // Traverse immediate children to collect fields and button
+                if ("children" in node && node.children.length > 0) {
+                    for (let i = 0; i < node.children.length; i++) {
+                        const child = node.children[i];
+                        const childName = child.name ? child.name.toLowerCase() : '';
 
-                // Stroke/border color (raw)
-                if (node.strokes && node.strokes.length > 0 && node.strokes[0].type === 'SOLID') {
-                    const stroke = node.strokes[0];
-                    const sOpacity = stroke.opacity !== undefined ? stroke.opacity : 1;
-                    nodeData.rawValues.borderColor = rgbaToCss({ r: stroke.color.r, g: stroke.color.g, b: stroke.color.b, a: sOpacity });
-                }
+                        // --- Input / Textarea field ---
+                        if (childName.includes('input') || childName.includes('textarea') || childName.includes('textfield') || childName.includes('search')) {
+                            const fieldData = {
+                                fieldType: childName.includes('textarea') ? 'textarea' : 'text',
+                                placeholder: '',
+                                tokens: {},
+                                rawValues: {}
+                            };
 
-                // Bound variables for corners and stroke color
-                if (node.boundVariables) {
-                    const rProps = ['topLeftRadius', 'topRightRadius', 'bottomRightRadius', 'bottomLeftRadius'];
-                    for (let i = 0; i < rProps.length; i++) {
-                        if (node.boundVariables[rProps[i]]) {
-                            const tName = await getVarName(node.boundVariables[rProps[i]].id);
-                            if (tName) nodeData.tokens[rProps[i]] = tName;
+                            // Placeholder text (deep extraction for M3 nested labels)
+                            const fieldTextNode = await findFirstText(child);
+                            if (fieldTextNode) {
+                                fieldData.placeholder = fieldTextNode.characters;
+                            }
+
+                            // Fill color via deep extraction
+                            const fieldFill = await extractDeepBackground(child);
+                            if (fieldFill) {
+                                fieldData.tokens.fill = fieldFill;
+                            }
+
+                            // Border color (raw + token)
+                            if (child.strokes && child.strokes.length > 0 && child.strokes[0].type === 'SOLID') {
+                                const stroke = child.strokes[0];
+                                const sOpacity = stroke.opacity !== undefined ? stroke.opacity : 1;
+                                fieldData.rawValues.borderColor = rgbaToCss({ r: stroke.color.r, g: stroke.color.g, b: stroke.color.b, a: sOpacity });
+                            }
+                            if (child.boundVariables && child.boundVariables['strokes'] && Array.isArray(child.boundVariables['strokes']) && child.boundVariables['strokes'].length > 0) {
+                                const strokeToken = await getVarName(child.boundVariables['strokes'][0].id);
+                                if (strokeToken) fieldData.tokens.borderColor = strokeToken;
+                            }
+
+                            // Border radius (4 corners)
+                            if ("topLeftRadius" in child) {
+                                fieldData.rawValues.topLeftRadius = child.topLeftRadius;
+                                fieldData.rawValues.topRightRadius = child.topRightRadius;
+                                fieldData.rawValues.bottomRightRadius = child.bottomRightRadius;
+                                fieldData.rawValues.bottomLeftRadius = child.bottomLeftRadius;
+                            }
+                            if (child.boundVariables) {
+                                const rProps = ['topLeftRadius', 'topRightRadius', 'bottomRightRadius', 'bottomLeftRadius'];
+                                for (let j = 0; j < rProps.length; j++) {
+                                    if (child.boundVariables[rProps[j]]) {
+                                        const tName = await getVarName(child.boundVariables[rProps[j]].id);
+                                        if (tName) fieldData.tokens[rProps[j]] = tName;
+                                    }
+                                }
+                            }
+
+                            nodeData.settings.fields.push(fieldData);
+                        }
+
+                        // --- Submit Button ---
+                        else if (childName.includes('button')) {
+                            const btnData = {
+                                text: '',
+                                tokens: {},
+                                rawValues: {}
+                            };
+
+                            // Button text (deep)
+                            const btnTextNode = await findFirstText(child);
+                            if (btnTextNode) {
+                                btnData.text = btnTextNode.characters;
+                                // Text color
+                                const btnTextColor = await extractTextColorToken(btnTextNode);
+                                if (btnTextColor) {
+                                    btnData.tokens.textColor = btnTextColor;
+                                }
+                            }
+
+                            // Button background fill (deep)
+                            const btnFill = await extractDeepBackground(child);
+                            if (btnFill) {
+                                btnData.tokens.fill = btnFill;
+                            }
+
+                            // Button border radius
+                            if ("topLeftRadius" in child) {
+                                btnData.rawValues.topLeftRadius = child.topLeftRadius;
+                                btnData.rawValues.topRightRadius = child.topRightRadius;
+                                btnData.rawValues.bottomRightRadius = child.bottomRightRadius;
+                                btnData.rawValues.bottomLeftRadius = child.bottomLeftRadius;
+                            }
+                            if (child.boundVariables) {
+                                const rProps = ['topLeftRadius', 'topRightRadius', 'bottomRightRadius', 'bottomLeftRadius'];
+                                for (let j = 0; j < rProps.length; j++) {
+                                    if (child.boundVariables[rProps[j]]) {
+                                        const tName = await getVarName(child.boundVariables[rProps[j]].id);
+                                        if (tName) btnData.tokens[rProps[j]] = tName;
+                                    }
+                                }
+                            }
+
+                            nodeData.settings.submit_button = btnData;
                         }
                     }
-                    if (node.boundVariables['strokes'] && Array.isArray(node.boundVariables['strokes']) && node.boundVariables['strokes'].length > 0) {
-                        const strokeToken = await getVarName(node.boundVariables['strokes'][0].id);
-                        if (strokeToken) nodeData.tokens.borderColor = strokeToken;
-                    }
-                }
-
-                // Fill color via deep extraction (handles M3 State Layers)
-                const formFill = await extractDeepBackground(node);
-                if (formFill) {
-                    nodeData.tokens.fill = formFill;
-                }
-
-                // Placeholder text via deep text extraction (handles M3 nested labels)
-                const formTextNode = await findFirstText(node);
-                if (formTextNode) {
-                    nodeData.settings.placeholder = formTextNode.characters;
                 }
 
                 return nodeData;
