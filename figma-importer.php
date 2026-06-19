@@ -856,6 +856,50 @@ function convert_figma_node($node)
             ];
         }
 
+        // --- Feature 3: Accordion / FAQ Widget ---
+        if ($node['widgetType'] === 'accordion') {
+            $items = $node['settings']['items'] ?? [];
+
+            // Build Elementor accordion repeater array
+            $elementor_tabs = [];
+            foreach ($items as $item) {
+                $elementor_tabs[] = [
+                    '_id' => substr(md5(uniqid()), 0, 7),
+                    'tab_title' => $item['title'] ?? 'Accordion Item',
+                    'tab_content' => $item['content'] ?? '',
+                ];
+            }
+
+            // Fallback: if no items, add one default
+            if (empty($elementor_tabs)) {
+                $elementor_tabs[] = [
+                    '_id' => substr(md5(uniqid()), 0, 7),
+                    'tab_title' => 'Accordion Item',
+                    'tab_content' => '',
+                ];
+            }
+
+            $accordion_settings = [
+                'tabs' => $elementor_tabs,
+                'selected_icon' => [
+                    'library' => 'fa-solid',
+                    'value' => 'fas fa-chevron-down',
+                ],
+                'selected_active_icon' => [
+                    'library' => 'fa-solid',
+                    'value' => 'fas fa-chevron-up',
+                ],
+            ];
+
+            return [
+                'id' => $el_id,
+                'elType' => 'widget',
+                'widgetType' => 'accordion',
+                'settings' => $accordion_settings,
+                'elements' => [],
+            ];
+        }
+
 
     }
 
@@ -901,6 +945,26 @@ function convert_figma_node($node)
         // 4. جهت چیدمان (Flex Direction)
         if (isset($node['layoutMode']) && $node['layoutMode'] !== 'NONE') {
             $element['settings']['flex_direction'] = ($node['layoutMode'] === 'HORIZONTAL') ? 'row' : 'column';
+        }
+
+        // --- Feature 1: Flexbox Alignment (justify_content & align_items) ---
+        $figma_align_map = [
+            'MIN' => 'flex-start',
+            'CENTER' => 'center',
+            'MAX' => 'flex-end',
+            'SPACE_BETWEEN' => 'space-between',
+        ];
+        if (!empty($node['rawValues']['primaryAxisAlignItems'])) {
+            $pVal = $node['rawValues']['primaryAxisAlignItems'];
+            if (isset($figma_align_map[$pVal])) {
+                $element['settings']['justify_content'] = $figma_align_map[$pVal];
+            }
+        }
+        if (!empty($node['rawValues']['counterAxisAlignItems'])) {
+            $cVal = $node['rawValues']['counterAxisAlignItems'];
+            if (isset($figma_align_map[$cVal])) {
+                $element['settings']['align_items'] = $figma_align_map[$cVal];
+            }
         }
 
         // 5. رنگ پس‌زمینه (Background Color)

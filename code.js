@@ -474,6 +474,14 @@ const runPlugin = async function (mode = 'full') {
                     const tokenName = await getVarName(node.boundVariables['itemSpacing'].id);
                     if (tokenName) nodeData.tokens.gap = tokenName;
                 }
+
+                // --- Feature 1: Flexbox Alignment (Container Layout) ---
+                if (node.primaryAxisAlignItems) {
+                    nodeData.rawValues.primaryAxisAlignItems = node.primaryAxisAlignItems;
+                }
+                if (node.counterAxisAlignItems) {
+                    nodeData.rawValues.counterAxisAlignItems = node.counterAxisAlignItems;
+                }
             }
 
             if ("fillStyleId" in node && node.fillStyleId !== "") {
@@ -865,6 +873,58 @@ const runPlugin = async function (mode = 'full') {
                 if (alertIconScan.icons.length > 0) {
                     // Check if any icon suggests dismiss/close
                     nodeData.settings.showDismiss = 'yes';
+                }
+
+                return nodeData;
+            }
+
+            // --- Feature 2: Smart Tabs Widget Detection ---
+            const isTabs = lowerName.includes('tabs') || lowerName.includes('tab-group');
+            if (isTabs && (node.type === 'FRAME' || node.type === 'INSTANCE' || node.type === 'COMPONENT')) {
+                nodeData.type = "SMART_WIDGET";
+                nodeData.widgetType = "tabs";
+                nodeData.settings = { tabs: [] };
+
+                // Find all text nodes inside and group them into pairs (Title, Content)
+                const tabTextNodes = await findTextNodes(node, 100, null);
+                for (let ti = 0; ti < tabTextNodes.length; ti += 2) {
+                    const tabTitle = tabTextNodes[ti] ? tabTextNodes[ti].characters : 'Tab ' + (Math.floor(ti / 2) + 1);
+                    const tabContent = (ti + 1 < tabTextNodes.length) ? tabTextNodes[ti + 1].characters : '';
+                    nodeData.settings.tabs.push({
+                        tab_title: tabTitle,
+                        tab_content: tabContent
+                    });
+                }
+
+                // Fallback: if no text nodes were found, create one empty tab
+                if (nodeData.settings.tabs.length === 0) {
+                    nodeData.settings.tabs.push({ tab_title: 'Tab 1', tab_content: '' });
+                }
+
+                return nodeData;
+            }
+
+            // --- Feature 3: Smart Accordion / FAQ Widget Detection ---
+            const isAccordion = lowerName.includes('accordion') || lowerName.includes('faq');
+            if (isAccordion && (node.type === 'FRAME' || node.type === 'INSTANCE' || node.type === 'COMPONENT')) {
+                nodeData.type = "SMART_WIDGET";
+                nodeData.widgetType = "accordion";
+                nodeData.settings = { items: [] };
+
+                // Find all text nodes inside and group them into pairs (Title, Content)
+                const accTextNodes = await findTextNodes(node, 100, null);
+                for (let ai = 0; ai < accTextNodes.length; ai += 2) {
+                    const accTitle = accTextNodes[ai] ? accTextNodes[ai].characters : 'Item ' + (Math.floor(ai / 2) + 1);
+                    const accContent = (ai + 1 < accTextNodes.length) ? accTextNodes[ai + 1].characters : '';
+                    nodeData.settings.items.push({
+                        title: accTitle,
+                        content: accContent
+                    });
+                }
+
+                // Fallback: if no text nodes were found, create one empty item
+                if (nodeData.settings.items.length === 0) {
+                    nodeData.settings.items.push({ title: 'Accordion Item 1', content: '' });
                 }
 
                 return nodeData;
